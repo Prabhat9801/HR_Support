@@ -3,7 +3,7 @@ Botivate HR Support - Pydantic Schemas
 Request/Response models for all API endpoints.
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.models.models import DatabaseType, PolicyType, RequestStatus, RequestPriority, UserRole
@@ -110,7 +110,12 @@ class LoginRequest(BaseModel):
     company_id: str
     employee_id: str
     password: str
-    role: UserRole
+    role: Optional[UserRole] = None  # ignored by backend — role determined from DB
+
+    @field_validator('company_id', 'employee_id')
+    @classmethod
+    def strip_whitespace(cls, v):
+        return v.strip() if isinstance(v, str) else v
 
 
 class LoginResponse(BaseModel):
@@ -196,12 +201,59 @@ class NotificationResponse(BaseModel):
         from_attributes = True
 
 
-# ── Schema Analysis Result ───────────────────────────────
-
 class SchemaAnalysisResult(BaseModel):
     primary_key: str
     employee_name: str
     email: Optional[str] = None
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
+    role_column: Optional[str] = None
     categories: Dict[str, List[str]]
+
+
+# ── Validated Schema Map (Pydantic enforced) ─────────────
+
+class ValidatedSchemaMap(BaseModel):
+    """Strict Pydantic model for schema_map — ensures all critical fields exist."""
+    primary_key: str = Field(..., min_length=1, description="Column name for employee ID")
+    employee_name: str = Field(..., min_length=1, description="Column name for employee name")
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    role_column: Optional[str] = None
+    categories: Optional[Dict[str, List[str]]] = None
+
+    @field_validator('primary_key', 'employee_name')
+    @classmethod
+    def must_not_be_empty(cls, v, info):
+        if not v or not v.strip():
+            raise ValueError(f"{info.field_name} cannot be empty")
+        return v.strip()
+
+
+class VerifiedEmployeeRecord(BaseModel):
+    """Validates that a fetched employee record matches the requested lookup."""
+    requested_id: str
+    found_id: str
+    record: Dict[str, Any]
+    primary_key_column: str
+    is_match: bool = False
+
+    @field_validator('is_match', mode='before')
+    @classmethod
+    def validate_match(cls, v, info):
+        data = info.data
+        req = str(data.get('requested_id', '')).strip().lower()
+        found = str(data.get('found_id', '')).strip().lower()
+        return req == found
+
+    def model_post_init(self, __context):
+        """After init, verify the record actually belongs to the requested employee."""
+        self.is_match = (
+            str(self.requested_id).strip().lower() == str(self.found_id).strip().lower()
+        )
+        if not self.is_match:
+            raise ValueError(
+                f"Data integrity violation: requested '{self.requested_id}' "
+                f"but got '{self.found_id}'. Record does NOT belong to this employee."
+            )

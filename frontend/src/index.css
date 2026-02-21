@@ -1,203 +1,135 @@
 @import "tailwindcss";
 
-/* ── Custom Design Tokens ─────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Botivate HR Support – Design System
+   Professional · Minimal · Modern Dark Theme
+   ═══════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --color-primary: #6c63ff;
-  --color-primary-dark: #5a52d5;
-  --color-primary-light: #8b85ff;
-  --color-accent: #00d9a6;
-  --color-accent-dark: #00b88c;
-  --color-danger: #ff6b6b;
-  --color-warning: #ffb84d;
-  --color-surface: #ffffff;
-  --color-surface-secondary: #f7f8fc;
-  --color-text-primary: #1a1a2e;
-  --color-text-secondary: #6b7280;
-  --color-border: #e5e7eb;
-  --color-bg: #f0f2f8;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 20px rgba(108, 99, 255, 0.15);
+  /* ── Color Palette ─────────────────────────── */
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-card: #1a1a25;
+  --bg-card-hover: #22222f;
+  --bg-input: #16161f;
+  --bg-elevated: #1e1e2a;
+
+  --border: #2a2a3a;
+  --border-light: #1f1f2f;
+  --border-focus: #6366f1;
+
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-subtle: rgba(99, 102, 241, 0.12);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  
+  --success: #10b981;
+  --success-subtle: rgba(16, 185, 129, 0.12);
+  --warning: #f59e0b;
+  --warning-subtle: rgba(245, 158, 11, 0.12);
+  --danger: #ef4444;
+  --danger-subtle: rgba(239, 68, 68, 0.12);
+
+  --text-primary: #f1f1f4;
+  --text-secondary: #8b8b9e;
+  --text-muted: #5a5a6e;
+  --text-on-accent: #ffffff;
+
+  /* ── Typography ────────────────────────────── */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ── Spacing & Radius ──────────────────────── */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 24px;
-  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-}
+  --radius-xl: 20px;
+  --radius-full: 9999px;
 
-/* ── Dark Mode ─────────────────────────────────────────── */
-
-.dark {
-  --color-primary: #8b85ff;
-  --color-primary-dark: #6c63ff;
-  --color-primary-light: #a8a3ff;
-  --color-accent: #00ffb8;
-  --color-surface: #1e1e2e;
-  --color-surface-secondary: #252536;
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #9ca3af;
-  --color-border: #374151;
-  --color-bg: #141420;
+  /* ── Shadows ───────────────────────────────── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 24px rgba(139, 133, 255, 0.2);
+  --shadow-glow: 0 0 24px var(--accent-glow);
+
+  /* ── Transitions ───────────────────────────── */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration: 200ms;
 }
 
-/* ── Base Reset ────────────────────────────────────────── */
-
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
-
-*,
-*::before,
-*::after {
+/* ── Base Reset ──────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 html {
+  font-size: 16px;
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  font-family: var(--font-sans);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
+  font-family: var(--font);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
   min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  transition:
-    background 0.3s ease,
-    color 0.3s ease;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────── */
+/* ── Scrollbar ───────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-::-webkit-scrollbar {
-  width: 6px;
+/* ── Animations ──────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
-}
-
-/* ── Animations ────────────────────────────────────────── */
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
-@keyframes pulse-soft {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.animate-fadeInUp {
-  animation: fadeInUp 0.5s ease-out forwards;
-}
+.animate-fadeIn { animation: fadeIn 0.3s var(--ease) both; }
+.animate-fadeInUp { animation: fadeInUp 0.4s var(--ease) both; }
+.animate-slideInRight { animation: slideInRight 0.3s var(--ease) both; }
 
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-out forwards;
-}
-
-.animate-slideInRight {
-  animation: slideInRight 0.4s ease-out forwards;
-}
-
-.animate-pulse-soft {
-  animation: pulse-soft 2s ease-in-out infinite;
-}
-
-/* ── Utility Classes ───────────────────────────────────── */
-
+/* ── Utility Classes ─────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.dark .glass {
-  background: rgba(30, 30, 46, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.gradient-primary {
-  background: linear-gradient(
-    135deg,
-    var(--color-primary),
-    var(--color-primary-light)
-  );
-}
-
-.gradient-accent {
-  background: linear-gradient(
-    135deg,
-    var(--color-primary),
-    var(--color-accent)
-  );
+  background: rgba(26, 26, 37, 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
 }
 
 .text-gradient {
-  background: linear-gradient(
-    135deg,
-    var(--color-primary),
-    var(--color-accent)
-  );
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.glow {
+  box-shadow: var(--shadow-glow);
 }

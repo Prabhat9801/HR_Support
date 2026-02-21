@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\debug_prov.py", line 10, in debug_provision
+    res = await auto_provision_employees(db, company_id, db_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\app\services\company_service.py", line 238, in auto_provision_employees
+    await adapter.update_column_values("system_password", primary_key, password_map)
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\app\adapters\google_sheets_adapter.py", line 177, in update_column_values
+    self.worksheet.update_cell(row_idx + 1, target_col_idx, key_value_map[clean_val])
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\.venv\Lib\site-packages\gspread\worksheet.py", line 760, in update_cell
+    data = self.client.values_update(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\.venv\Lib\site-packages\gspread\http_client.py", line 173, in values_update
+    r = self.request("put", url, params=params, json=body)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ghanshyam\Desktop\HR_Support\backend\.venv\Lib\site-packages\gspread\http_client.py", line 128, in request
+    raise APIError(response)
+gspread.exceptions.APIError: APIError: [429]: Quota exceeded for quota metric 'Write requests' and limit 'Write requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:972998647693'.

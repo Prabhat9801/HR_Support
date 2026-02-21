@@ -40,15 +40,67 @@ async def send_message(
     db_config = db_conn.connection_config if db_conn else {}
     db_type = db_conn.db_type.value if db_conn else "google_sheets"
 
-    # Fetch employee data from external DB
+    # Fetch employee data from external DB with Pydantic verification
     employee_data = {}
     if db_conn and schema_map:
         try:
+            from app.models.schemas import VerifiedEmployeeRecord
             adapter = await get_adapter(db_conn.db_type, db_config)
             primary_key = schema_map.get("primary_key", "")
-            employee_data = await adapter.get_record_by_key(primary_key, user.employee_id) or {}
+
+            # Auto-validate schema: re-analyze if primary_key not in actual headers
+            actual_headers = await adapter.get_headers()
+            if primary_key and primary_key not in actual_headers:
+                print(f"[CHAT] Schema stale! primary_key '{primary_key}' not in headers. Re-analyzing...")
+                from app.services.schema_analyzer import analyze_schema
+                new_schema = await analyze_schema(actual_headers)
+                schema_map = new_schema.model_dump()
+                db_conn.schema_map = schema_map
+                await db.commit()
+                primary_key = schema_map.get("primary_key", "")
+                print(f"[CHAT] Re-analyzed. New primary_key: '{primary_key}'")
+
+            print(f"[CHAT] Fetching employee '{user.employee_id}' using primary_key '{primary_key}'")
+            raw_record = await adapter.get_record_by_key(primary_key, user.employee_id)
+            
+            # Pydantic verification: ensure fetched record belongs to the logged-in user
+            if raw_record:
+                found_id = str(raw_record.get(primary_key, ""))
+                try:
+                    verified = VerifiedEmployeeRecord(
+                        requested_id=user.employee_id,
+                        found_id=found_id,
+                        record=raw_record,
+                        primary_key_column=primary_key,
+                    )
+                    employee_data = verified.record
+                    print(f"[CHAT] ✅ Pydantic verified: {user.employee_id} == {found_id}")
+                except ValueError as ve:
+                    print(f"[CHAT] ❌ Pydantic verification FAILED: {ve}")
+                    # Strict fallback: manually search all records
+                    all_recs = await adapter.get_all_records()
+                    for r in all_recs:
+                        if str(r.get(primary_key, "")).strip().lower() == user.employee_id.strip().lower():
+                            employee_data = r
+                            print(f"[CHAT] ✅ Found correct record via manual search")
+                            break
+            else:
+                print(f"[CHAT] ⚠️ No record found for '{user.employee_id}'")
         except Exception as e:
             print(f"[CHAT] Error fetching employee data: {e}")
+
+    # Fetch recent requests so the agent can accurately answer status_check intents
+    from app.services.approval_service import get_employee_requests
+    recent_requests_orm = await get_employee_requests(db, user.company_id, user.employee_id)
+    recent_requests = [
+        {
+            "id": r.id,
+            "request_type": r.request_type,
+            "status": r.status.value,
+            "context": r.context,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        } for r in recent_requests_orm
+    ]
 
     # Run through LangGraph agent
     agent_result = await chat_with_agent(
@@ -62,11 +114,14 @@ async def send_message(
         user_message=data.message,
         employee_data=employee_data,
         chat_history=[],  # Can be extended with session-based history
+        employee_requests=recent_requests,
     )
 
     # If approval is needed, create the request in DB
     if agent_result.get("approval_needed"):
-        intent = agent_result.get("intent", "general")
+        # ALWAYS use the specific approval request type, not the general intent
+        intent = agent_result.get("approval_request_type") or agent_result.get("intent", "general")
+        request_details = agent_result.get("request_details") or {}
         try:
             await create_approval_request(
                 db=db,
@@ -75,6 +130,7 @@ async def send_message(
                     employee_id=user.employee_id,
                     employee_name=user.employee_name,
                     request_type=intent,
+                    request_details=request_details,
                     context=data.message,
                     priority=RequestPriority.NORMAL,
                     assigned_to_role=UserRole.MANAGER,

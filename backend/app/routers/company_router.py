@@ -151,3 +151,52 @@ async def provision_employees(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@router.post("/{company_id}/databases/{db_id}/reanalyze")
+async def reanalyze_schema(
+    company_id: str,
+    db_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-analyze the schema of an existing database connection using AI."""
+    from sqlalchemy import select
+    from app.models.models import DatabaseConnection, Company
+    from app.adapters.adapter_factory import get_adapter
+    from app.services.schema_analyzer import analyze_schema
+
+    result = await db.execute(
+        select(DatabaseConnection).where(
+            DatabaseConnection.id == db_id,
+            DatabaseConnection.company_id == company_id,
+        )
+    )
+    db_conn = result.scalars().first()
+    if not db_conn:
+        raise HTTPException(status_code=404, detail="Database connection not found.")
+
+    # Get fresh headers from the actual database
+    adapter = await get_adapter(db_conn.db_type, db_conn.connection_config)
+    headers = await adapter.get_headers()
+    
+    # Re-run schema analysis
+    schema_result = await analyze_schema(headers)
+    new_schema = schema_result.model_dump()
+    
+    # Update both DatabaseConnection and Company
+    db_conn.schema_map = new_schema
+    
+    company_result = await db.execute(
+        select(Company).where(Company.id == company_id)
+    )
+    company = company_result.scalars().first()
+    if company:
+        company.schema_map = new_schema
+    
+    await db.commit()
+
+    return {
+        "message": "Schema re-analyzed successfully",
+        "schema_map": new_schema,
+        "headers_found": headers,
+    }

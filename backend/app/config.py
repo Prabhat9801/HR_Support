@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_use_tls: bool = True
+    smtp_user: str = ""
+    smtp_password: str = ""
 
     # --- JWT Auth ---
     jwt_secret_key: str = "change-this-jwt-secret"

@@ -240,7 +240,12 @@ async def auto_provision_employees(
     # Step 4: Send credential emails
     sent_count = 0
     failed_count = 0
-    if company.hr_email and company.hr_email_password:
+    
+    # Use company's own email credentials if provided, otherwise fallback to system default testing email
+    sender_email = company.hr_email if company.hr_email and company.hr_email_password and company.hr_email_password != 'dummy-password' else settings.smtp_user
+    sender_password = company.hr_email_password if company.hr_email and company.hr_email_password and company.hr_email_password != 'dummy-password' else settings.smtp_password
+    
+    if sender_email and sender_password:
         for task in email_tasks:
             success = await send_credential_email(
                 to_email=task["email"],
@@ -249,13 +254,15 @@ async def auto_provision_employees(
                 employee_id=task["emp_id"],
                 password=task["password"],
                 login_link=company.login_link or settings.app_base_url,
-                from_email=company.hr_email,
-                from_password=company.hr_email_password,
+                from_email=sender_email,
+                from_password=sender_password,
             )
             if success:
                 sent_count += 1
             else:
                 failed_count += 1
+    else:
+        print("[WARNING] Email sending skipped due to missing SMTP credentials.")
 
     return {
         "total_employees": len(password_map),

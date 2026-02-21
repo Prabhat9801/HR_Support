@@ -3,12 +3,13 @@ Botivate HR Support - Email Utility
 Sends credential distribution and notification emails using company-configured SMTP.
 """
 
-import aiosmtplib
+import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 from app.config import settings
 from jinja2 import Template
+import asyncio
 
 
 # ── Credential Distribution Email Template ────────────────
@@ -98,24 +99,35 @@ async def send_credential_email(
     )
 
     msg = MIMEMultipart("alternative")
-    msg["From"] = from_email
+    sender_email = settings.smtp_user or from_email
+    msg["From"] = sender_email
     msg["To"] = to_email
     msg["Subject"] = f"Your HR Portal Credentials - {company_name}"
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            start_tls=settings.smtp_use_tls,
-            username=from_email,
-            password=from_password,
-        )
+    # LOCAL TESTING MODE: If no password is provided, just print the email to the console!
+    if not settings.smtp_password or settings.smtp_password == "your-email-password-here":
+        print("="*60)
+        print(f"📧 [LOCAL MOCK EMAIL] To: {to_email}")
+        print(f"📧 Subject: Your HR Portal Credentials - {company_name}")
+        print(f"📧 Password Generated: {password}")
+        print("="*60)
         return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send to {to_email}: {e}")
-        return False
+
+    def _send_sync():
+        try:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+            if settings.smtp_use_tls:
+                server.starttls()
+            server.login(settings.smtp_user or from_email, settings.smtp_password or from_password)
+            server.send_message(msg)
+            server.quit()
+            return True
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send to {to_email}: {e}")
+            return False
+
+    return await asyncio.to_thread(_send_sync)
 
 
 async def send_notification_email(
@@ -134,21 +146,34 @@ async def send_notification_email(
     )
 
     msg = MIMEMultipart("alternative")
-    msg["From"] = from_email
+    sender_email = settings.smtp_user or from_email
+    msg["From"] = sender_email
     msg["To"] = to_email
     msg["Subject"] = title
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.smtp_host,
-            port=settings.smtp_port,
-            start_tls=settings.smtp_use_tls,
-            username=from_email,
-            password=from_password,
-        )
+    # LOCAL TESTING MODE: If no password is provided, just print the email to the console!
+    if not settings.smtp_password or settings.smtp_password == "your-email-password-here":
+        print("="*60)
+        print(f"📧 [LOCAL MOCK NOTIFICATION] To: {to_email}")
+        print(f"📧 Subject: {title}")
+        print(f"📧 Message: {message}")
+        if login_link:
+            print(f"📧 Link: {login_link}")
+        print("="*60)
         return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send notification to {to_email}: {e}")
-        return False
+
+    def _send_sync_notif():
+        try:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+            if settings.smtp_use_tls:
+                server.starttls()
+            server.login(settings.smtp_user or from_email, settings.smtp_password or from_password)
+            server.send_message(msg)
+            server.quit()
+            return True
+        except Exception as e:
+            print(f"[EMAIL ERROR] Failed to send notification to {to_email}: {e}")
+            return False
+
+    return await asyncio.to_thread(_send_sync_notif)

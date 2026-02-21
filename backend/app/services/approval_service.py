@@ -54,6 +54,12 @@ async def create_approval_request(
     db.add(notification)
     await db.commit()
 
+    # Also write the request to the company's Google Sheet
+    try:
+        await write_request_to_sheet(db, request)
+    except Exception as e:
+        print(f"[SHEET CREATE WRITE ERROR] {e}")
+
     return request
 
 
@@ -123,11 +129,12 @@ async def get_employee_requests(
     db: AsyncSession, company_id: str, employee_id: str
 ) -> List[ApprovalRequest]:
     """Fetch all requests for a specific employee."""
+    from sqlalchemy import func
     result = await db.execute(
         select(ApprovalRequest).where(
             ApprovalRequest.company_id == company_id,
-            ApprovalRequest.employee_id == employee_id,
-        )
+            func.lower(ApprovalRequest.employee_id) == employee_id.strip().lower(),
+        ).order_by(ApprovalRequest.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -217,11 +224,68 @@ async def check_pending_reminders(db: AsyncSession) -> dict:
     return {"reminders_sent": reminders_sent, "escalations": escalations}
 
 
-# ── Helper: Update Sheet Status ──────────────────────────
+# ── Helper: Write Request to Sheet on Creation ───────────
+
+async def write_request_to_sheet(db: AsyncSession, request: ApprovalRequest) -> None:
+    """When a request is created, the DB Agent updates the Google Sheet."""
+    from app.models.models import DatabaseConnection
+    from app.agents.db_agent import run_db_agent
+
+    result = await db.execute(
+        select(DatabaseConnection).where(
+            DatabaseConnection.company_id == request.company_id,
+            DatabaseConnection.is_active == True,
+        )
+    )
+    db_conn = result.scalars().first()
+    if not db_conn or not db_conn.schema_map:
+        print("[SHEET WRITE] No active DB connection found for this company.")
+        return
+
+    # Build rich context for the DB Agent
+    context = {
+        "request_type": request.request_type,
+        "status": request.status.value,
+        "context_message": request.context,
+        "employee_name": request.employee_name,
+        "created_at": request.created_at.strftime("%d %B %Y") if request.created_at else "",
+        "priority": request.priority.value if request.priority else "normal",
+    }
+    
+    # Merge request_details (contains AI-extracted fields like dates, reason, etc.)
+    if request.request_details:
+        context.update(request.request_details)
+
+    # Determine action string
+    action = f"{request.request_type}_applied"
+
+    # Run the DB Agent (sub-agent with its own LangGraph)
+    sync_result = await run_db_agent(
+        db_type=db_conn.db_type.value,
+        connection_config=db_conn.connection_config,
+        schema_map=db_conn.schema_map,
+        employee_id=request.employee_id,
+        action=action,
+        context=context,
+    )
+
+    if sync_result["success"]:
+        print(f"[SHEET WRITE] ✅ DB Agent synced: {sync_result['updates_applied']}")
+        if sync_result.get("new_columns_created"):
+            print(f"[SHEET WRITE] ✅ New columns: {sync_result['new_columns_created']}")
+        if sync_result.get("verification"):
+            print(f"[SHEET WRITE] ✅ Verified: {sync_result['verification']}")
+    else:
+        print(f"[SHEET WRITE] ❌ DB Agent failed: {sync_result['error']}")
+
+
+# ── Helper: Update Sheet Status After Decision ───────────
 
 async def _update_sheet_status(db: AsyncSession, request: ApprovalRequest) -> None:
-    """Update the employee's record in the Google Sheet with approval status."""
+    """Update the Google Sheet after approval/rejection using the DB Agent."""
     from app.models.models import DatabaseConnection
+    from app.agents.db_agent import run_db_agent
+
     result = await db.execute(
         select(DatabaseConnection).where(
             DatabaseConnection.company_id == request.company_id,
@@ -232,13 +296,38 @@ async def _update_sheet_status(db: AsyncSession, request: ApprovalRequest) -> No
     if not db_conn or not db_conn.schema_map:
         return
 
-    adapter = await get_adapter(db_conn.db_type, db_conn.connection_config)
-    primary_key = db_conn.schema_map.get("primary_key")
-    if not primary_key:
-        return
+    status_text = request.status.value  # "approved" or "rejected"
 
-    updates = {
-        f"last_{request.request_type}_status": request.status.value,
-        f"last_{request.request_type}_date": request.decided_at.isoformat() if request.decided_at else "",
+    # Build rich decision context for the DB Agent
+    context = {
+        "request_type": request.request_type,
+        "new_status": status_text,
+        "decision_note": request.decision_note or "",
+        "decided_by": request.decided_by or "",
+        "decided_at": request.decided_at.strftime("%d %B %Y %H:%M") if request.decided_at else "",
+        "employee_name": request.employee_name,
     }
-    await adapter.update_record(primary_key, request.employee_id, updates)
+    
+    # Include request_details (dates, reason, leave_type, etc.)
+    if request.request_details:
+        context.update(request.request_details)
+
+    # Determine action string  
+    action = f"{request.request_type}_{status_text}"  # e.g. "leave_request_approved"
+
+    # Run the DB Agent
+    sync_result = await run_db_agent(
+        db_type=db_conn.db_type.value,
+        connection_config=db_conn.connection_config,
+        schema_map=db_conn.schema_map,
+        employee_id=request.employee_id,
+        action=action,
+        context=context,
+    )
+
+    if sync_result["success"]:
+        print(f"[SHEET UPDATE] ✅ DB Agent decision synced: {sync_result['updates_applied']}")
+    else:
+        print(f"[SHEET UPDATE] ❌ DB Agent decision failed: {sync_result['error']}")
+
+

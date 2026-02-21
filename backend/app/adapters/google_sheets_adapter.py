@@ -36,11 +36,18 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
 
     async def connect(self, config: Dict[str, Any]) -> None:
         """Connect to Google Sheets using service account credentials."""
-        spreadsheet_id = config.get("spreadsheet_id")
+        raw_spreadsheet_input = config.get("spreadsheet_id", "")
         sheet_name = config.get("sheet_name", None)
 
-        if not spreadsheet_id:
-            raise ValueError("spreadsheet_id is required in connection_config.")
+        if not raw_spreadsheet_input:
+            raise ValueError("spreadsheet_id (or a link) is required in connection_config.")
+            
+        # Extract ID if a full URL is provided
+        spreadsheet_id = raw_spreadsheet_input
+        if "spreadsheets/d/" in raw_spreadsheet_input:
+            parts = raw_spreadsheet_input.split("spreadsheets/d/")
+            if len(parts) > 1:
+                spreadsheet_id = parts[1].split("/")[0]
 
         # Load service account credentials
         sa_path = settings.google_service_account_json
@@ -95,7 +102,8 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
         return results
 
     async def update_record(self, key_column: str, key_value: str, updates: Dict[str, Any]) -> bool:
-        """Update a specific employee's fields by locating their row."""
+        """Update a specific employee's fields by locating their row.
+        If a column in updates doesn't exist, it will be auto-created."""
         if not self.worksheet:
             raise ConnectionError("Not connected to any worksheet.")
 
@@ -110,10 +118,28 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
             return False
 
         row_number = cell.row
+        cells_to_update = []
+        
         for col_name, value in updates.items():
+            if col_name not in headers:
+                # Auto-create the column if it doesn't exist
+                try:
+                    await self.add_column(col_name)
+                    headers = await self.get_headers()  # Refresh headers
+                    print(f"[ADAPTER] Auto-created column '{col_name}'")
+                except Exception as e:
+                    print(f"[ADAPTER] Failed to auto-create column '{col_name}': {e}")
+                    continue
+            
             if col_name in headers:
                 col_index = headers.index(col_name) + 1
-                self.worksheet.update_cell(row_number, col_index, value)
+                cells_to_update.append(
+                    gspread.Cell(row=row_number, col=col_index, value=value)
+                )
+        
+        # Batch update for efficiency (fewer API calls)
+        if cells_to_update:
+            self.worksheet.update_cells(cells_to_update)
 
         return True
 
@@ -129,12 +155,19 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
             return True  # Already exists, no-op
 
         new_col_index = len(headers) + 1
-        self.worksheet.update_cell(1, new_col_index, column_name)
+        
+        # Expand grid horizontally if needed
+        if new_col_index > self.worksheet.col_count:
+            self.worksheet.add_cols(1)
+            
+        cells_to_update = [gspread.Cell(row=1, col=new_col_index, value=column_name)]
 
         # Write default values if provided
         if default_values:
             for i, val in enumerate(default_values):
-                self.worksheet.update_cell(i + 2, new_col_index, val)
+                cells_to_update.append(gspread.Cell(row=i + 2, col=new_col_index, value=val))
+
+        self.worksheet.update_cells(cells_to_update)
 
         # Refresh headers cache
         self._headers = self.worksheet.row_values(1)
@@ -156,13 +189,17 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
         target_col_idx = headers.index(column_name) + 1
 
         all_values = self.worksheet.col_values(key_col_idx)
+        cells_to_update = []
 
         for row_idx, cell_value in enumerate(all_values):
             if row_idx == 0:
                 continue  # Skip header
             clean_val = str(cell_value).strip()
             if clean_val in key_value_map:
-                self.worksheet.update_cell(row_idx + 1, target_col_idx, key_value_map[clean_val])
+                cells_to_update.append(gspread.Cell(row=row_idx + 1, col=target_col_idx, value=key_value_map[clean_val]))
+
+        if cells_to_update:
+            self.worksheet.update_cells(cells_to_update)
 
         return True
 

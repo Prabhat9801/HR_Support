@@ -33,6 +33,10 @@ def _get_vectorstore(company_id: str) -> Chroma:
 
 async def index_text_policy(company_id: str, title: str, content: str) -> None:
     """Index a text-based policy into the company's vector store."""
+    if not settings.openai_api_key or settings.openai_api_key == "your-openai-api-key-here":
+        print(f"⚠️ [MOCK RAG] Skipping actual AI embedding for policy '{title}' because OpenAI key is missing or dummy.")
+        return
+
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_text(content)
 
