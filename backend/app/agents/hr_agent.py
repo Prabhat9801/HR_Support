@@ -226,6 +226,12 @@ Company Policies:
 Employee Question: {state['current_input']}
 
 Answer precisely from the policies. If the specific answer isn't in the policies, summarize what policies are available.
+
+FORMATTING RULES:
+- Use clear SECTION HEADERS (###).
+- Use BULLETED LISTS for readability.
+- DO NOT just dump a single paragraph.
+- Use DOUBLE NEWLINES between sections.
 """
                             resp = await llm.ainvoke([HumanMessage(content=fmt_prompt)])
                             answer = resp.content.strip()
@@ -337,7 +343,13 @@ Rules:
 - Answer ONLY from the data provided.
 - When asked about "my" details, ONLY use the logged-in employee's data above.
 - If the data does not contain the answer, say "I don't have this information in the database."
-- Be professional. Format numbers, dates, and lists nicely.
+- Be professional. 
+- FORMATTING RULES: 
+  - Use clear SECTION HEADERS (e.g. ### Leave Summary).
+  - Use BULLETED LISTS for multiple fields.
+  - DO NOT just dump a single paragraph.
+  - Use bold sparingly for keys.
+  - Use DOUBLE NEWLINES between sections for readability.
 """
         response = await llm.ainvoke([HumanMessage(content=answer_prompt)])
         state["response"] = response.content.strip()
@@ -380,12 +392,13 @@ Extract any of these fields if mentioned:
 - leave_type (sick, casual, earned, etc.)
 - start_date
 - end_date
-- duration (number of days)
+- duration (number of days — Return ONLY the NUMBER, e.g. 3)
 - reason
 - any other relevant details
 
+Note: If start_date and end_date are provided but duration is missing, calculate it.
 Return ONLY valid JSON with the extracted fields. If a field is not mentioned, omit it.
-Example: {{"reason": "family function", "start_date": "2026-02-25", "end_date": "2026-02-27", "duration": "3 days", "leave_type": "casual"}}
+Example: {{"reason": "family function", "start_date": "2026-02-25", "end_date": "2026-02-27", "duration": 3, "leave_type": "casual"}}
 """
         resp = await llm.ainvoke([HumanMessage(content=extract_prompt)])
         import json, re

@@ -4,9 +4,19 @@ Registers all routers, initializes DB, and starts the background scheduler.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+import time
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# Set up logging for detailed backend tracking
+logging.basicConfig(
+    level=logging.INFO,
+    format="\n%(asctime)s | BOTIVATE-BACKEND | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("botivate_api")
 
 from app.config import settings
 from app.database import init_db, async_session_factory
@@ -51,6 +61,53 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # 1. Log Incoming Request Details
+    client_ip = request.client.host if request.client else "Unknown"
+    logger.info(f"➡️ [NEW REQUEST] {request.method} {request.url.path} from IP: {client_ip}")
+    
+    if request.query_params:
+        logger.info(f"   [QUERY] {request.query_params}")
+    
+    # 2. Extract and Log Body if JSON (to not block file uploads like PDFs/CSV)
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.body()
+            if body:
+                logger.info(f"   [PAYLOAD] {body.decode('utf-8')}")
+            
+            # Put the body back so route handler can read it
+            async def receive():
+                return {"type": "http.request", "body": body}
+            request._receive = receive
+        except Exception as e:
+            logger.warning(f"   [PAYLOAD ERROR] Failed to read body: {e}")
+
+    # 3. Process the Route Logic
+    try:
+        response = await call_next(request)
+        process_time = (time.time() - start_time) * 1000
+        status_code = response.status_code
+        
+        # 4. Log Response Status
+        if 200 <= status_code < 300:
+            logger.info(f"✅ [SUCCESS] Returned {status_code} in {process_time:.2f}ms")
+        elif 400 <= status_code < 500:
+            logger.warning(f"⚠️ [CLIENT EXCEPTION] Returned {status_code} in {process_time:.2f}ms")
+        else:
+            logger.error(f"❌ [SERVER FAULT] Returned {status_code} in {process_time:.2f}ms")
+            
+        return response
+    except Exception as e:
+        process_time = (time.time() - start_time) * 1000
+        logger.error(f"🔥 [CRITICAL EXCEPTION] {str(e)} | Time elapsed: {process_time:.2f}ms")
+        raise e
 
 # ── CORS ──────────────────────────────────────────────────
 

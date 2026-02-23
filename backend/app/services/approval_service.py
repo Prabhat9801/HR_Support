@@ -5,6 +5,7 @@ Zero Auto-Approval Policy: AI never approves. Only routes & records.
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.models.models import (
@@ -13,6 +14,72 @@ from app.models.models import (
 from app.models.schemas import ApprovalRequestCreate, ApprovalDecision
 from app.adapters.adapter_factory import get_adapter
 from app.utils.email_service import send_notification_email
+from app.agents.hr_agent import get_llm
+from langchain_core.messages import HumanMessage
+
+# ── Generate Summary Report ──────────────────────────────
+
+async def generate_summary_report(db: AsyncSession, company_id: str, employee_id: str, request_type: str, context: str, request_details: dict) -> str:
+    """Generate a short, concise summary report using AI to help authorities decide."""
+    from app.models.models import DatabaseConnection
+    
+    # Get employee data
+    result = await db.execute(
+        select(DatabaseConnection).where(
+            DatabaseConnection.company_id == company_id,
+            DatabaseConnection.is_active == True,
+        )
+    )
+    db_conn = result.scalars().first()
+    emp_data = {}
+    if db_conn and db_conn.schema_map:
+        try:
+            adapter = await get_adapter(db_conn.db_type, db_conn.connection_config)
+            pk = db_conn.schema_map.get("primary_key", "")
+            emp_data = await adapter.get_record_by_key(pk, employee_id)
+
+            if not emp_data:
+                # Fallback search
+                all_records = await adapter.get_all_records()
+                for rec in all_records:
+                    rec_val = str(rec.get(pk, "")).strip().lower()
+                    if rec_val == employee_id.strip().lower():
+                        emp_data = rec
+                        break
+        except Exception as e:
+            print(f"[SUMMARY REPORT ERROR] Failed to fetch employee data: {e}")
+
+    try:
+        import json
+        llm = get_llm()
+        prompt = f"""You are an HR assistant creating a brief summary report for a manager/HR to review a {request_type}.
+        
+Employee ID: {employee_id}
+Request Context: {context}
+Extracted Details: {json.dumps(request_details, default=str)}
+
+Employee Profile Data (from database):
+{json.dumps(emp_data, default=str, indent=2)}
+
+Task:
+Please deeply analyze the request against the employee's full profile data. Look for ALL relevant metrics.
+For example:
+- If it's a leave request, check leave balance, but ALSO check if they have any pending/urgent tasks, or their recent KPIs. 
+- If it's a resignation, check their tenure, performance score, or notice period.
+- If it's an expense claim, check their project allocation or past claims.
+
+Write a very short, crisp report (2-4 sentences) summarizing:
+1. What the employee is asking for.
+2. The most critical data points from their profile (leave balance, pending tasks, recent performance, etc.).
+3. A neutral summary to help the manager decide. Do NOT approve or reject it yourself.
+
+Output ONLY the short text report. Do not use markdown headers."""
+        
+        resp = await llm.ainvoke([HumanMessage(content=prompt)])
+        return resp.content.strip()
+    except Exception as e:
+        print(f"[SUMMARY REPORT ERROR] LLM generation failed: {e}")
+        return "Automated summary could not be generated at this time."
 
 
 # ── Create Approval Request ──────────────────────────────
@@ -26,14 +93,23 @@ async def create_approval_request(
     Record a new approval request in the database.
     AI calls this; AI NEVER approves.
     """
+    # Generate a dynamic summary report
+    summary_text = await generate_summary_report(
+        db, company_id, data.employee_id, data.request_type, data.context or "", data.request_details or {}
+    )
+
+    # Store the report in request_details (dynamic storage)
+    details = data.request_details or {}
+    details["summary_report"] = summary_text
+    
     request = ApprovalRequest(
         company_id=company_id,
         employee_id=data.employee_id,
         employee_name=data.employee_name,
         request_type=data.request_type,
-        request_details=data.request_details,
+        request_details=details,
         context=data.context,
-        priority=data.priority,
+        priority=data.priority, 
         assigned_to_role=data.assigned_to_role or UserRole.MANAGER,
         status=RequestStatus.PENDING,
     )
@@ -66,10 +142,8 @@ async def create_approval_request(
 # ── Process Decision (Approve / Reject) ──────────────────
 
 async def process_decision(
-    db: AsyncSession,
-    request_id: str,
-    decided_by: str,
-    decision: ApprovalDecision,
+    db: AsyncSession, request_id: str, decided_by: str, decision: ApprovalDecision, 
+    background_tasks: Optional[BackgroundTasks] = None
 ) -> Optional[ApprovalRequest]:
     """Authority approves or rejects a request."""
     result = await db.execute(
@@ -100,12 +174,86 @@ async def process_decision(
     await db.refresh(request)
 
     # Also update the company's Google Sheet if applicable
-    try:
-        await _update_sheet_status(db, request)
-    except Exception as e:
-        print(f"[SHEET UPDATE ERROR] {e}")
+    if background_tasks:
+        # We need to fetch connection info before passing to background task because DB session might close
+        from app.models.models import DatabaseConnection
+        result = await db.execute(
+            select(DatabaseConnection).where(
+                DatabaseConnection.company_id == request.company_id,
+                DatabaseConnection.is_active == True,
+            )
+        )
+        db_conn = result.scalars().first()
+        if db_conn and db_conn.schema_map:
+            # Pass everything as serializable dicts to avoid session issues
+            background_tasks.add_task(
+                _update_sheet_status_background,
+                db_conn.db_type.value,
+                db_conn.connection_config,
+                db_conn.schema_map,
+                request.employee_id,
+                request.request_type,
+                request.status.value,
+                request.decision_note or "",
+                request.decided_by or "",
+                request.decided_at,
+                request.employee_name,
+                request.request_details
+            )
+    else:
+        try:
+            await _update_sheet_status(db, request)
+        except Exception as e:
+            print(f"[SHEET UPDATE ERROR] {e}")
 
     return request
+
+
+async def _update_sheet_status_background(
+    db_type: str, 
+    connection_config: dict, 
+    schema_map: dict, 
+    employee_id: str,
+    request_type: str,
+    status_text: str,
+    decision_note: str,
+    decided_by: str,
+    decided_at: datetime,
+    employee_name: str,
+    request_details: dict
+) -> None:
+    """Helper for background sheet updates to avoid session closing issues."""
+    from app.agents.db_agent import run_db_agent
+    
+    # Build rich decision context
+    context = {
+        "request_type": request_type,
+        "new_status": status_text,
+        "decision_note": decision_note,
+        "decided_by": decided_by,
+        "decided_at": decided_at.strftime("%d %B %Y %H:%M") if decided_at else "",
+        "employee_name": employee_name,
+    }
+    
+    if request_details:
+        context.update(request_details)
+
+    action = f"{request_type}_{status_text}"  # e.g. "leave_request_approved"
+
+    print(f"[BACKGROUND SHEET UPDATE] Starting for {employee_id} - {action}")
+    sync_result = await run_db_agent(
+        db_type=db_type,
+        connection_config=connection_config,
+        schema_map=schema_map,
+        employee_id=employee_id,
+        action=action,
+        context=context,
+    )
+
+    if sync_result["success"]:
+        print(f"[BACKGROUND SHEET UPDATE] ✅ Success: {sync_result['updates_applied']}")
+    else:
+        print(f"[BACKGROUND SHEET UPDATE] ❌ Failed: {sync_result['error']}")
 
 
 # ── Get Requests ─────────────────────────────────────────
@@ -118,8 +266,16 @@ async def get_pending_requests(
         ApprovalRequest.company_id == company_id,
         ApprovalRequest.status == RequestStatus.PENDING,
     ]
+    
     if role:
-        filters.append(ApprovalRequest.assigned_to_role == role)
+        # Optimization: Allow shared visibility for authorities (Manager/HR/Admin/CEO)
+        if role in [UserRole.MANAGER, UserRole.HR, UserRole.ADMIN, UserRole.CEO]:
+            # They can see requests assigned to any of these authority roles
+            filters.append(ApprovalRequest.assigned_to_role.in_([
+                UserRole.MANAGER, UserRole.HR, UserRole.ADMIN, UserRole.CEO
+            ]))
+        else:
+            filters.append(ApprovalRequest.assigned_to_role == role)
 
     result = await db.execute(select(ApprovalRequest).where(and_(*filters)))
     return list(result.scalars().all())
@@ -142,14 +298,26 @@ async def get_employee_requests(
 # ── Notifications ────────────────────────────────────────
 
 async def get_notifications(
-    db: AsyncSession, company_id: str, employee_id: str
+    db: AsyncSession, company_id: str, employee_id: str, role: Optional[UserRole] = None
 ) -> List[Notification]:
-    """Fetch notifications for a specific employee."""
+    """Fetch notifications for a specific employee, including shared authority alerts."""
+    from sqlalchemy import or_
+    
+    filters = [
+        Notification.company_id == company_id,
+    ]
+    
+    # Base condition: Notifications for this specific employee
+    personal_condition = Notification.target_employee_id == employee_id
+    
+    if role in [UserRole.MANAGER, UserRole.HR, UserRole.ADMIN, UserRole.CEO]:
+        # Authority roles also see notifications targeted at "__authority__"
+        filters.append(or_(personal_condition, Notification.target_employee_id == "__authority__"))
+    else:
+        filters.append(personal_condition)
+
     result = await db.execute(
-        select(Notification).where(
-            Notification.company_id == company_id,
-            Notification.target_employee_id == employee_id,
-        ).order_by(Notification.created_at.desc())
+        select(Notification).where(and_(*filters)).order_by(Notification.created_at.desc())
     )
     return list(result.scalars().all())
 

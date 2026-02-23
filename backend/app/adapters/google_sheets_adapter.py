@@ -36,10 +36,12 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
 
     async def connect(self, config: Dict[str, Any]) -> None:
         """Connect to Google Sheets using service account credentials."""
+        print(f"[GOOGLE SHEETS] 🔌 Connecting to Database using config...")
         raw_spreadsheet_input = config.get("spreadsheet_id", "")
         sheet_name = config.get("sheet_name", None)
 
         if not raw_spreadsheet_input:
+            print("[GOOGLE SHEETS] ❌ ERROR: spreadsheet_id is missing from connection_config.")
             raise ValueError("spreadsheet_id (or a link) is required in connection_config.")
             
         # Extract ID if a full URL is provided
@@ -58,11 +60,14 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
         self.client = gspread.authorize(credentials)
 
         self.spreadsheet = self.client.open_by_key(spreadsheet_id)
+        print(f"[GOOGLE SHEETS] ✅ SUCCESS: Connected to Spreadsheet '{self.spreadsheet.title}' (ID: {spreadsheet_id})")
 
         if sheet_name:
             self.worksheet = self.spreadsheet.worksheet(sheet_name)
+            print(f"[GOOGLE SHEETS] 📄 Connected to specific worksheet: '{sheet_name}'")
         else:
             self.worksheet = self.spreadsheet.sheet1
+            print(f"[GOOGLE SHEETS] 📄 Connected to default worksheet1: '{self.worksheet.title}'")
 
         # Cache headers
         self._headers = self.worksheet.row_values(1)
@@ -81,10 +86,15 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
 
     async def get_record_by_key(self, key_column: str, key_value: str) -> Optional[Dict[str, Any]]:
         """Find a single record by its primary key column value."""
+        print(f"[GOOGLE SHEETS] 🔍 Searching for record where '{key_column}' == '{key_value}'...")
         records = await self.get_all_records()
+        print(f"[GOOGLE SHEETS] Iterating over {len(records)} total records to find match...")
         for record in records:
             if str(record.get(key_column, "")).strip().lower() == str(key_value).strip().lower():
+                print(f"[GOOGLE SHEETS] ✅ SUCCESS: Record matched and found!")
                 return record
+        
+        print(f"[GOOGLE SHEETS] ❌ FAILED: Record '{key_value}' NOT found after checking {len(records)} rows.")
         return None
 
     async def get_records_by_filter(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -118,29 +128,55 @@ class GoogleSheetsAdapter(BaseDatabaseAdapter):
             return False
 
         row_number = cell.row
-        cells_to_update = []
         
+        # Build cell data for update
+        updates_list = []
         for col_name, value in updates.items():
             if col_name not in headers:
-                # Auto-create the column if it doesn't exist
                 try:
                     await self.add_column(col_name)
-                    headers = await self.get_headers()  # Refresh headers
-                    print(f"[ADAPTER] Auto-created column '{col_name}'")
-                except Exception as e:
-                    print(f"[ADAPTER] Failed to auto-create column '{col_name}': {e}")
-                    continue
+                    headers = await self.get_headers()
+                except: continue
             
             if col_name in headers:
                 col_index = headers.index(col_name) + 1
-                cells_to_update.append(
-                    gspread.Cell(row=row_number, col=col_index, value=value)
-                )
+                # Format for update: {range: 'A1', values: [[val]]} for v6 compatibility
+                col_letter = gspread.utils.rowcol_to_a1(row_number, col_index)
+                updates_list.append({
+                    'range': col_letter,
+                    'values': [[value]]
+                })
         
-        # Batch update for efficiency (fewer API calls)
-        if cells_to_update:
-            self.worksheet.update_cells(cells_to_update)
+        if updates_list:
+            # batch_update is more compatible across gspread versions
+            self.worksheet.batch_update(updates_list)
 
+        return True
+
+    async def create_record(self, data: Dict[str, Any]) -> bool:
+        """Create a new record (row) in the Google Sheet."""
+        if not self.worksheet:
+            raise ConnectionError("Not connected to any worksheet.")
+
+        headers = await self.get_headers()
+        
+        # Ensure all columns in the new record exist in the sheet
+        headers_updated = False
+        for col_name in data.keys():
+            if col_name not in headers:
+                await self.add_column(col_name)
+                headers_updated = True
+        
+        if headers_updated:
+            headers = await self.get_headers()
+
+        # Construct the row values in order
+        new_row = []
+        for h in headers:
+            new_row.append(data.get(h, ""))
+
+        # Append to the bottom
+        self.worksheet.append_row(new_row)
         return True
 
     async def add_column(self, column_name: str, default_values: Optional[List[Any]] = None) -> bool:

@@ -6,13 +6,14 @@ Endpoints for company registration, policies, DB connections, and employee provi
 import os
 import shutil
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.schemas import (
     CompanyCreate, CompanyResponse, CompanySupportInfo,
     PolicyCreate, PolicyResponse, PolicyUpdate,
     DatabaseConnectionCreate, DatabaseConnectionResponse,
+    EmployeeDataUpdateRequest,
 )
 from app.services import company_service
 from app.services.rag_service import index_text_policy, index_document_file
@@ -25,8 +26,19 @@ router = APIRouter(prefix="/api/companies", tags=["Companies"])
 
 @router.post("/register", response_model=CompanyResponse)
 async def register_company(data: CompanyCreate, db: AsyncSession = Depends(get_db)):
-    """Register a new company in the system."""
+    """Register a new company and create their workspace."""
+    print(f"\n[ONBOARD LOG] 🚀 Starting New Company Registration for: '{data.name}'")
+    
     company = await company_service.create_company(db, data)
+    
+    if not company:
+        print(f"[ONBOARD LOG] ❌ FAILED: Company '{data.name}' creation failed in company_service.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not register company. Email or Name might already exist.",
+        )
+        
+    print(f"[ONBOARD LOG] ✅ SUCCESS: Company '{company.name}' successfully registered with ID: '{company.id}'")
     return company
 
 
@@ -128,8 +140,15 @@ async def add_database(
     db: AsyncSession = Depends(get_db),
 ):
     """Connect a database and auto-analyze its schema using AI."""
-    db_conn = await company_service.add_database_connection(db, company_id, data)
-    return db_conn
+    print(f"\n[{company_id}][ONBOARD LOG] 🔌 Attaching Database to Company ID: '{company_id}'...")
+    print(f"[{company_id}][ONBOARD LOG] DB Type: {data.db_type}. Config provided: {data.connection_config}")
+    try:
+        db_conn = await company_service.add_database_connection(db, company_id, data)
+        print(f"[{company_id}][ONBOARD LOG] ✅ SUCCESS: Database connected & schema analyzed (Conn ID: {db_conn.id})")
+        return db_conn
+    except Exception as e:
+        print(f"[{company_id}][ONBOARD ERROR] ❌ Adding database failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{company_id}/databases", response_model=List[DatabaseConnectionResponse])
@@ -140,17 +159,27 @@ async def list_databases(company_id: str, db: AsyncSession = Depends(get_db)):
 
 # ── Employee Auto-Provisioning ───────────────────────────
 
-@router.post("/{company_id}/databases/{db_id}/provision")
+@router.post("/{company_id}/databases/{db_connection_id}/provision")
 async def provision_employees(
     company_id: str,
-    db_id: str,
-    db: AsyncSession = Depends(get_db),
+    db_connection_id: str,
+    db: AsyncSession = Depends(get_db)
 ):
-    """Auto-generate passwords and send credentials to all employees."""
-    result = await company_service.auto_provision_employees(db, company_id, db_id)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    """
+    Step 3 of Onboarding: Read the DB, generate passwords, and send emails.
+    """
+    print(f"\n[{company_id}][ONBOARD LOG] ⚙️ Manually triggering Employee Auto-Provisioning for DB: '{db_connection_id}'...")
+    try:
+        result = await company_service.auto_provision_employees(db, company_id, db_connection_id)
+        if "error" in result:
+            print(f"[{company_id}][ONBOARD ERROR] ❌ Provisioning failed: {result['error']}")
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+        print(f"[{company_id}][ONBOARD LOG] ✅ SUCCESS: Provisioning finished cleanly. Check previous PROVISION LOGs for stats.")
+        return result
+    except Exception as e:
+        print(f"[{company_id}][ONBOARD ERROR] ❌ Critical failure during provisioning: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{company_id}/databases/{db_id}/reanalyze")
@@ -200,3 +229,58 @@ async def reanalyze_schema(
         "schema_map": new_schema,
         "headers_found": headers,
     }
+
+
+# ── Employee Master Data Management ──────────────────────
+
+@router.get("/{company_id}/employee-data")
+async def get_all_employee_data(company_id: str, db: AsyncSession = Depends(get_db)):
+    """Fetch all employee records from the active database for the company admin."""
+    try:
+        data = await company_service.get_all_employee_data(db, company_id)
+        return data
+    except Exception as e:
+        print(f"[EMPLOYEE DATA ERROR] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{company_id}/employee-data/create")
+async def create_employee_record(
+    company_id: str,
+    data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Create a new employee record in the spreadsheet.
+    Used by Manager/HR from the Admin Settings panel.
+    """
+    try:
+        result = await company_service.create_employee_record(db, company_id, data)
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except Exception as e:
+        print(f"[EMPLOYEE CREATE ERROR] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{company_id}/employee-data/update")
+async def update_employee_record(
+    company_id: str,
+    payload: EmployeeDataUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update a specific employee record in the spreadsheet.
+    Used by Manager/HR from the Admin Settings panel.
+    """
+    try:
+        result = await company_service.update_employee_record(
+            db, company_id, payload.employee_id, payload.updates
+        )
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    except Exception as e:
+        print(f"[EMPLOYEE UPDATE ERROR] {e}")
+        raise HTTPException(status_code=500, detail=str(e))

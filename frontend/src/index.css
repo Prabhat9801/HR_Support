@@ -1,135 +1,196 @@
-@import "tailwindcss";
-
-/* ═══════════════════════════════════════════════════
-   Botivate HR Support – Design System
-   Professional · Minimal · Modern Dark Theme
-   ═══════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 :root {
-  /* ── Color Palette ─────────────────────────── */
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-card: #1a1a25;
-  --bg-card-hover: #22222f;
-  --bg-input: #16161f;
-  --bg-elevated: #1e1e2a;
-
-  --border: #2a2a3a;
-  --border-light: #1f1f2f;
-  --border-focus: #6366f1;
-
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-subtle: rgba(99, 102, 241, 0.12);
-  --accent-glow: rgba(99, 102, 241, 0.25);
+  /* Core Color Palette - Minimal & Professional */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f4f4f5;
+  
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #a1a1aa;
+  
+  --brand-primary: #09090b;
+  --brand-secondary: #27272a;
+  
+  --accent-color: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #eff6ff;
   
   --success: #10b981;
-  --success-subtle: rgba(16, 185, 129, 0.12);
   --warning: #f59e0b;
-  --warning-subtle: rgba(245, 158, 11, 0.12);
-  --danger: #ef4444;
-  --danger-subtle: rgba(239, 68, 68, 0.12);
+  --error: #ef4444;
 
-  --text-primary: #f1f1f4;
-  --text-secondary: #8b8b9e;
-  --text-muted: #5a5a6e;
-  --text-on-accent: #ffffff;
+  /* Borders & Shadows */
+  --border-color: #e4e4e7;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 
-  /* ── Typography ────────────────────────────── */
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-
-  /* ── Spacing & Radius ──────────────────────── */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* ── Shadows ───────────────────────────────── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 24px var(--accent-glow);
-
-  /* ── Transitions ───────────────────────────── */
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --duration: 200ms;
+  /* Font */
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* ── Base Reset ──────────────────────────────── */
-*, *::before, *::after {
+/* Dark Mode Preferences (Optional, if we want to toggle later) */
+[data-theme='dark'] {
+  --bg-primary: #09090b;
+  --bg-secondary: #18181b;
+  --bg-tertiary: #27272a;
+  
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #52525b;
+  
+  --brand-primary: #ffffff;
+  --brand-secondary: #fafafa;
+  
+  --border-color: #3f3f46;
+}
+
+* {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html {
-  font-size: 16px;
-  scroll-behavior: smooth;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  font-family: var(--font);
+html, body {
+  font-family: var(--font-sans);
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.6;
-  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
 }
 
-/* ── Scrollbar ───────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-full); }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
-/* ── Animations ──────────────────────────────── */
+/* Global Transitions for smooth interactions */
+a, button, input, select, textarea {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Base Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Forms and Inputs */
+input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Shared utility classes */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--brand-primary);
+  color: var(--bg-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--brand-secondary);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+}
+
+.btn-accent {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  font-size: 0.875rem;
+}
+
+.input-field:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px rgb(9 9 11 / 10%); /* Subtle focus ring */
+}
+
+/* Fade in animation for components */
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slideInRight {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.animate-fadeIn { animation: fadeIn 0.3s var(--ease) both; }
-.animate-fadeInUp { animation: fadeInUp 0.4s var(--ease) both; }
-.animate-slideInRight { animation: slideInRight 0.3s var(--ease) both; }
-
-/* ── Utility Classes ─────────────────────────── */
+/* Glassmorphism for floating UI elements */
 .glass {
-  background: rgba(26, 26, 37, 0.7);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
-}
-
-.text-gradient {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.glow {
-  box-shadow: var(--shadow-glow);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }

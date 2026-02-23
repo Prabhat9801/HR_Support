@@ -3,7 +3,7 @@ Botivate HR Support - Pydantic Schemas
 Request/Response models for all API endpoints.
 """
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.models.models import DatabaseType, PolicyType, RequestStatus, RequestPriority, UserRole
@@ -104,6 +104,11 @@ class DatabaseConnectionResponse(BaseModel):
         from_attributes = True
 
 
+class EmployeeDataUpdateRequest(BaseModel):
+    employee_id: str
+    updates: Dict[str, Any]
+
+
 # ── Auth Schemas ──────────────────────────────────────────
 
 class LoginRequest(BaseModel):
@@ -175,10 +180,17 @@ class ApprovalRequestResponse(BaseModel):
     decision_note: Optional[str]
     decided_by: Optional[str]
     decided_at: Optional[datetime]
+    summary_report: Optional[str] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode='after')
+    def extract_summary_from_details(self) -> 'ApprovalRequestResponse':
+        if not self.summary_report and self.request_details:
+            self.summary_report = self.request_details.get("summary_report")
+        return self
 
 
 class ApprovalDecision(BaseModel):

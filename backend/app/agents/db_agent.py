@@ -108,6 +108,15 @@ async def read_employee_data(state: DBAgentState) -> DBAgentState:
         record = await adapter.get_record_by_key(state["primary_key"], state["employee_id"])
         
         if not record:
+            # Fallback search
+            all_records = await adapter.get_all_records()
+            for rec in all_records:
+                rec_val = str(rec.get(state["primary_key"], "")).strip().lower()
+                if rec_val == str(state["employee_id"]).strip().lower():
+                    record = rec
+                    break
+
+        if not record:
             state["error"] = f"Employee '{state['employee_id']}' not found in the sheet."
             state["success"] = False
             return state
@@ -152,20 +161,27 @@ async def plan_updates(state: DBAgentState) -> DBAgentState:
 === ACTION DETAILS ===
 {json.dumps(state['context'], default=str, indent=2)}
 
-=== YOUR TASK ===
-Generate the EXACT columns and values to update in this employee's row.
+LEAVE CALCULATION RULES (STRICT CONSISTENCY):
+1. If action is "leave_request_approved":
+   - Read the 'duration' or 'days' from ACTION DETAILS. (Let's call this 'X')
+   - Identify Numeric Columns: "Leaves Taken", "Leaves Remaining", "Days Taken", "Balance", etc.
+   - For "Taken" columns: New Value = Current Value + X.
+   - For "Remaining", "Balance", or "Available" columns: New Value = Current Value - X.
+   - If there is a "Total Entitlement" or "Carry Forward" column, do NOT change it (it's the max limit).
+   - Ensure the new values satisfy: [Total Entitlement] = [New Taken] + [New Remaining] (if all three exist).
+2. If action is "applied":
+   - Update "Status" to "Pending" or "Applied".
+   - Do NOT subtract or add to numeric balances yet.
+   - Update "Upcoming Leave" or "Last Action" columns with dates from context.
+3. If action is "rejected":
+   - Update "Status" to "Rejected".
+   - Do NOT change any balances.
 
-CRITICAL RULES:
-1. USE EXISTING COLUMN NAMES — match the exact headers from the sheet. 
-   Example: If the sheet has "Total Leave Balance", use that exact name, NOT "Leave Balance".
-2. For NUMERIC CALCULATIONS: Read the current value, calculate the new value, return the NUMBER.
-   Example: If "Total Leave Balance" is 22 and employee takes 2 days leave:
-   - For "applied/pending" action: Do NOT deduct yet, just update status columns
-   - For "approved" action: Deduct → return 20 (not a formula)
-3. ONLY CREATE NEW COLUMNS if no existing column can serve the purpose.
+GENERAL RULES:
+1. USE EXACT COLUMN NAMES bit-for-bit from CURRENT SHEET COLUMNS.
+2. For dates (Last Leave From/To), use the format from existing row data (likely DD/MM/YYYY).
+3. Return final NUMBERS, not strings of math (e.g. 15, not "15 days").
 4. Never update the primary key column ("{state['primary_key']}").
-5. For dates, match the format already used in the sheet.
-6. Important: Look at what columns already exist related to "leave", "status", "upcoming", etc. and USE THEM.
 
 === RESPONSE FORMAT ===
 Return ONLY valid JSON:
@@ -173,9 +189,8 @@ Return ONLY valid JSON:
   "updates": {{
     "Exact Column Name": "new value or number"
   }},
-  "new_columns": ["Only If No Existing Column Matches"]
+  "new_columns": []
 }}
-
 No explanations. Only JSON."""
 
         resp = await llm.ainvoke([HumanMessage(content=prompt)])

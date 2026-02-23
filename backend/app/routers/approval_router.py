@@ -4,7 +4,7 @@ Endpoints for managing approval workflows and notifications.
 """
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.schemas import (
@@ -51,6 +51,7 @@ async def get_my_requests(
 async def decide_request(
     request_id: str,
     decision: ApprovalDecision,
+    background_tasks: BackgroundTasks,
     user: TokenPayload = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -59,7 +60,7 @@ async def decide_request(
         raise HTTPException(status_code=403, detail="Only authorities can approve/reject requests.")
 
     result = await approval_service.process_decision(
-        db, request_id, user.employee_name or user.employee_id, decision
+        db, request_id, user.employee_name or user.employee_id, decision, background_tasks
     )
     if not result:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -77,7 +78,9 @@ async def get_my_notifications(
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch all notifications for the current user."""
-    return await approval_service.get_notifications(db, user.company_id, user.employee_id)
+    return await approval_service.get_notifications(
+        db, user.company_id, user.employee_id, user.role
+    )
 
 
 @notifications_router.post("/{notification_id}/read")

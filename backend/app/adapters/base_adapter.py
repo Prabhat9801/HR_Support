@@ -59,3 +59,8 @@ class BaseDatabaseAdapter(ABC):
     async def get_column_values(self, column_name: str) -> List[Any]:
         """Get all values for a specific column."""
         pass
+
+    @abstractmethod
+    async def create_record(self, data: Dict[str, Any]) -> bool:
+        """Create a new record in the data source."""
+        pass

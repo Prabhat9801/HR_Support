@@ -1,141 +1,140 @@
-/**
- * Botivate HR Support – Login Page
- * Minimal · Professional · Role auto-detected by AI
- */
-
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { FiLock, FiUser, FiBriefcase } from 'react-icons/fi';
+import axios from 'axios';
 
 export default function LoginPage() {
+  const [formData, setFormData] = useState({
+    companyId: '',
+    employeeId: '',
+    password: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ company_id: '', employee_id: '', password: '' });
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.company_id || !form.employee_id || !form.password) {
-      toast.error('Please fill all fields');
-      return;
-    }
-    setLoading(true);
+    setIsLoading(true);
+    
+    // 1. Log what we are sending
+    console.log("[FRONTEND LOG] 🚀 Starting Login request...");
+    const payload = {
+        company_id: formData.companyId.trim(),
+        employee_id: formData.employeeId.trim(),
+        password: formData.password.trim()
+    };
+    console.log("[FRONTEND LOG] 📦 Payload:", { ...payload, password: "***HIDDEN***" });
+
     try {
-      const user = await login(form);
-      toast.success(`Welcome, ${user.employee_name}!`);
-      if (['hr', 'admin'].includes(user.role)) navigate('/onboarding');
-      else navigate('/chat');
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Login failed');
+      console.log(`[FRONTEND LOG] 🌐 Sending POST to http://localhost:8000/api/auth/login`);
+      const response = await axios.post('http://localhost:8000/api/auth/login', payload);
+      
+      console.log("[FRONTEND LOG] ✅ Backend Response received:", response.status, response.data);
+
+      if (response.data && response.data.access_token) {
+        localStorage.setItem('auth_token', response.data.access_token);
+        localStorage.setItem('user_info', JSON.stringify(response.data));
+        toast.success('Login successful!');
+        navigate('/dashboard');
+      } else {
+        console.error("[FRONTEND ERROR] ❌ Unexpected response format (no access_token):", response.data);
+        toast.error('Unexpected response format.');
+      }
+    } catch (error) {
+      console.error("[FRONTEND ERROR] 🔥 Login attempt failed:", error);
+      if (error.response) {
+        // The request was made and the server responded with a status code outside 2xx
+        console.error("[FRONTEND ERROR] ⚠️ Server Responded with Error Status:", error.response.status);
+        console.error("[FRONTEND ERROR] ⚠️ Response Data:", error.response.data);
+        if (error.response.data && error.response.data.detail) {
+          toast.error(error.response.data.detail);
+        } else {
+          toast.error(`Server Error: ${error.response.status}`);
+        }
+      } else if (error.request) {
+        // The request was made but no response was received (e.g. CORS/Network error)
+        console.error("[FRONTEND ERROR] 🔌 Network/No-Response Error:", error.request);
+        toast.error('Could not reach the backend. Check if the server is running on port 8000.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("[FRONTEND ERROR] ⚙️ Setup Error:", error.message);
+        toast.error(error.message || 'Invalid credentials or server error. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
+      console.log("[FRONTEND LOG] 🏁 Login process finished.");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
-         style={{ background: 'var(--bg-primary)' }}>
+    <div className="auth-layout fade-in">
+      <div className="auth-wrapper">
+        <div className="auth-card">
+          <h1>Botivate HR</h1>
+          <p className="subtitle">Secure access to your company workspace</p>
+          
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>Company ID</label>
+              <div style={{ position: 'relative' }}>
+                <FiBriefcase style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  className="input-field"
+                  style={{ paddingLeft: '2.5rem' }}
+                  placeholder="Enter your company ID"
+                  value={formData.companyId}
+                  onChange={(e) => setFormData({...formData, companyId: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
 
-      {/* Ambient Glow */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-30 blur-[100px]"
-             style={{ background: 'var(--accent)' }} />
-        <div className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full opacity-20 blur-[80px]"
-             style={{ background: '#8b5cf6' }} />
-      </div>
+            <div className="form-group">
+              <label>Employee ID</label>
+              <div style={{ position: 'relative' }}>
+                <FiUser style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  className="input-field"
+                  style={{ paddingLeft: '2.5rem' }}
+                  placeholder="e.g. EMP001"
+                  value={formData.employeeId}
+                  onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
 
-      <div className="w-full max-w-sm relative z-10 animate-fadeInUp">
+            <div className="form-group">
+              <label>Password</label>
+              <div style={{ position: 'relative' }}>
+                <FiLock style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="password"
+                  className="input-field"
+                  style={{ paddingLeft: '2.5rem' }}
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
 
-        {/* Brand */}
-        <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 glow"
-               style={{ background: 'linear-gradient(135deg, var(--accent), #8b5cf6)' }}>
-            <span className="text-white font-bold text-xl">B</span>
+            <div className="form-actions">
+              <button type="submit" className="btn btn-primary btn-full" disabled={isLoading}>
+                {isLoading ? 'Authenticating...' : 'Sign In'}
+              </button>
+            </div>
+          </form>
+
+          <div className="auth-footer">
+            <p>Don't have a company account? <Link to="/onboarding">Register here</Link></p>
           </div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            Botivate <span className="text-gradient">HR</span>
-          </h1>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-            AI-Powered HR Support Portal
-          </p>
-        </div>
-
-        {/* Card */}
-        <form onSubmit={submit}
-              className="p-6 rounded-2xl space-y-4"
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                boxShadow: 'var(--shadow-lg)',
-              }}>
-
-          <Field label="Company ID" value={form.company_id} onChange={set('company_id')}
-                 placeholder="e.g. 7a84ad60-101e-..." />
-          <Field label="Employee ID" value={form.employee_id} onChange={set('employee_id')}
-                 placeholder="e.g. EMP0002" />
-          <Field label="Password" type="password" value={form.password} onChange={set('password')}
-                 placeholder="••••••••" />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer disabled:opacity-50"
-            style={{
-              background: 'linear-gradient(135deg, var(--accent), #8b5cf6)',
-              color: '#fff',
-              boxShadow: loading ? 'none' : 'var(--shadow-glow)',
-            }}>
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Signing in…
-              </span>
-            ) : 'Sign In'}
-          </button>
-        </form>
-
-        {/* Register */}
-        <div className="text-center mt-6 animate-fadeInUp" style={{ animationDelay: '150ms' }}>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>New company?</p>
-          <button onClick={() => navigate('/register')}
-                  className="text-xs font-medium transition-colors cursor-pointer"
-                  style={{ color: 'var(--accent)' }}>
-            Register Your Company →
-          </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── Reusable Input Field ──────────────────── */
-function Field({ label, type = 'text', ...props }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium mb-1.5"
-             style={{ color: 'var(--text-secondary)' }}>{label}</label>
-      <input
-        type={type}
-        required
-        className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
-        style={{
-          background: 'var(--bg-input)',
-          color: 'var(--text-primary)',
-          border: '1px solid var(--border)',
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = 'var(--accent)';
-          e.target.style.boxShadow = '0 0 0 3px var(--accent-subtle)';
-        }}
-        onBlur={(e) => {
-          e.target.style.borderColor = 'var(--border)';
-          e.target.style.boxShadow = 'none';
-        }}
-        {...props}
-      />
     </div>
   );
 }

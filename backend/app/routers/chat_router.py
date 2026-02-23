@@ -28,24 +28,44 @@ async def send_message(
     Send a message to the AI chatbot.
     The agent handles intent detection, RAG, DB queries, and approval routing.
     """
-    # Fetch company's database connection & schema
+    employee_id = user.employee_id
+    company_id = user.company_id
+    print(f"\n[{company_id}][CHAT LOG] 🗨️ New Chat Request from Employee: '{employee_id}'")
+
+    # Fetch company 
+    company = await get_company(db, company_id)
+    if not company:
+        print(f"[{company_id}][CHAT LOG] ❌ FAILED: Company not found.")
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Fetch active database connection
+    print(f"[{company_id}][CHAT LOG] Fetching active Database connection for the chat context...")
     result = await db.execute(
         select(DatabaseConnection).where(
-            DatabaseConnection.company_id == user.company_id,
+            DatabaseConnection.company_id == company_id,
             DatabaseConnection.is_active == True,
         )
     )
     db_conn = result.scalars().first()
-    schema_map = db_conn.schema_map if db_conn else {}
-    db_config = db_conn.connection_config if db_conn else {}
-    db_type = db_conn.db_type.value if db_conn else "google_sheets"
+    if not db_conn or not db_conn.schema_map:
+        print(f"[{company_id}][CHAT LOG] ❌ FAILED: No active Database Connection or schema found for company.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Company database not configured properly.",
+        )
+    print(f"[{company_id}][CHAT LOG] 🔗 Active DB connection found (Type: {db_conn.db_type})")
+
+    # Build context for the AI
+    schema_map = db_conn.schema_map
+    primary_key_col = schema_map.get("primary_key", "")
+    print(f"[{company_id}][CHAT LOG] DB Schema Primary Key is mapped to: '{primary_key_col}'")
 
     # Fetch employee data from external DB with Pydantic verification
     employee_data = {}
     if db_conn and schema_map:
         try:
             from app.models.schemas import VerifiedEmployeeRecord
-            adapter = await get_adapter(db_conn.db_type, db_config)
+            adapter = await get_adapter(db_conn.db_type, db_conn.connection_config)
             primary_key = schema_map.get("primary_key", "")
 
             # Auto-validate schema: re-analyze if primary_key not in actual headers
@@ -102,20 +122,44 @@ async def send_message(
         } for r in recent_requests_orm
     ]
 
-    # Run through LangGraph agent
-    agent_result = await chat_with_agent(
-        company_id=user.company_id,
-        employee_id=user.employee_id,
-        employee_name=user.employee_name,
-        role=user.role.value if isinstance(user.role, UserRole) else user.role,
-        schema_map=schema_map,
-        db_config=db_config,
-        db_type=db_type,
-        user_message=data.message,
-        employee_data=employee_data,
-        chat_history=[],  # Can be extended with session-based history
-        employee_requests=recent_requests,
-    )
+    # Pre-fetch the employee's entire row using the ID from the token (validated)
+    adapter = await get_adapter(db_conn.db_type, db_conn.connection_config)
+    print(f"[{company_id}][CHAT LOG] Fetching comprehensive row record for Employee ID '{employee_id}'...")
+    employee_record = await adapter.get_record_by_key(primary_key_col, employee_id)
+    
+    if not employee_record:
+       print(f"[{company_id}][CHAT LOG] ⚠️ WARNING: Could not find exact direct match for '{employee_id}' across column '{primary_key_col}'. Applying fallback matching (Case-Insensitive)...")
+       all_records = await adapter.get_all_records()
+       for rec in all_records:
+           rec_val = str(rec.get(primary_key_col, "")).strip().lower()
+           if rec_val == employee_id.strip().lower():
+               employee_record = rec
+               print(f"[{company_id}][CHAT LOG] ✅ Fallback successful. Found a case-insensitive match: '{rec_val}'.")
+               break
+       if not employee_record:
+           print(f"[{company_id}][CHAT LOG] ❌ FAILED: Found NO MATCH AT ALL using fallback.")
+           employee_record = {}
+
+    print(f"[{company_id}][CHAT LOG] Passing control to primary HR LangGraph Agent with user message: '{data.message}'")
+    # Send message to LangGraph agent
+    try:
+        agent_result = await chat_with_agent(
+            company_id=company_id,
+            employee_id=employee_id,
+            employee_name=user.employee_name,
+            role=user.role.value if isinstance(user.role, UserRole) else user.role,
+            schema_map=schema_map,
+            db_config=db_conn.connection_config,
+            db_type=db_conn.db_type.value if db_conn else "google_sheets",
+            user_message=data.message,
+            employee_data=employee_record,
+            chat_history=[],
+            employee_requests=recent_requests,
+        )
+        print(f"[{company_id}][CHAT LOG] ✅ Agent processing completed successfully. Returning ChatResponse.")
+    except Exception as e:
+        print(f"[{company_id}][CHAT ERROR] ❌ Primary LangGraph Agent crashed: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent runtime error: {str(e)}")
 
     # If approval is needed, create the request in DB
     if agent_result.get("approval_needed"):

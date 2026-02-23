@@ -1,387 +1,288 @@
-/**
- * Botivate HR Support – Onboarding / Admin Page
- * Company Registration · Policies · Database · Provisioning
- */
-
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { companyAPI } from '../api';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { FiBriefcase, FiMail, FiUser, FiUploadCloud } from 'react-icons/fi';
+import axios from 'axios';
 
-export default function OnboardingPage({ isPublic }) {
+export default function OnboardingPage() {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    companyName: '',
+    industry: '',
+    contactName: '',
+    contactEmail: '',
+    policiesText: '',
+    dbUrl: '',
+    policyFile: null,
+  });
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [step, setStep] = useState(isPublic ? 0 : 1); // 0=register, 1=policies, 2=database, 3=provision
-  const [companyId, setCompanyId] = useState(user?.company_id || '');
-  const [loading, setLoading] = useState(false);
 
-  // Step 0: Registration
-  const [regForm, setRegForm] = useState({
-    name: '', industry: '', hr_name: '', hr_email: '', hr_email_password: '',
-    support_email: '', support_phone: '', support_whatsapp: '', support_message: '',
-    login_link: window.location.origin + '/login',
-  });
-
-  // Step 1: Policies
-  const [policies, setPolicies] = useState([]);
-  const [policyForm, setPolicyForm] = useState({ title: '', description: '', content: '' });
-  const [policyFile, setPolicyFile] = useState(null);
-  const [policyType, setPolicyType] = useState('text'); // text | document
-
-  // Step 2: Database
-  const [databases, setDatabases] = useState([]);
-  const [dbForm, setDbForm] = useState({
-    title: '', description: '', db_type: 'google_sheets', spreadsheet_id: '',
-  });
-
-  // Step 3: Provision
-  const [provisionResult, setProvisionResult] = useState(null);
-
-  // Load existing data
-  useEffect(() => {
-    if (companyId) {
-      companyAPI.getPolicies(companyId).then(r => setPolicies(r.data)).catch(() => {});
-      companyAPI.getDatabases(companyId).then(r => setDatabases(r.data)).catch(() => {});
+  const handleNext = () => {
+    if (step === 1 && (!formData.companyName || !formData.contactEmail)) {
+      toast.error('Please fill required fields.');
+      return;
     }
-  }, [companyId]);
-
-  const registerCompany = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await companyAPI.register(regForm);
-      setCompanyId(res.data.id);
-      toast.success(`Company registered! ID: ${res.data.id}`);
-      setStep(1);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Registration failed');
-    } finally { setLoading(false); }
+    setStep(2);
   };
 
-  const addPolicy = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
+    console.log("[FRONTEND LOG] 🚀 Starting Company Onboarding/Registration Process...");
+    
     try {
-      if (policyType === 'text') {
-        await companyAPI.addTextPolicy(companyId, policyForm);
+      // 1. Register Company
+      const companyPayload = {
+        name: formData.companyName,
+        industry: formData.industry,
+        hr_name: formData.contactName,
+        hr_email: formData.contactEmail
+      };
+      console.log(`[FRONTEND LOG] 👉 Step 1: Registering Company with payload:`, companyPayload);
+      const compRes = await axios.post('http://localhost:8000/api/companies/register', companyPayload);
+      const companyId = compRes.data.id;
+      console.log(`[FRONTEND LOG] ✅ Step 1 Success: Company created. ID: '${companyId}'`);
+
+      // 2. Add Database Connection
+      let dbId = null;
+      if (formData.dbUrl) {
+         console.log(`[FRONTEND LOG] 👉 Step 2: Attaching Google Sheet DB:`, formData.dbUrl);
+         const dbRes = await axios.post(`http://localhost:8000/api/companies/${companyId}/databases`, {
+           title: "Primary Employee DB",
+           db_type: "google_sheets",
+           connection_config: { spreadsheet_id: formData.dbUrl }
+         });
+         dbId = dbRes.data.id;
+         console.log(`[FRONTEND LOG] ✅ Step 2 Success: DB Attached. ID: '${dbId}'`);
       } else {
-        const fd = new FormData();
-        fd.append('title', policyForm.title);
-        fd.append('description', policyForm.description);
-        fd.append('file', policyFile);
-        await companyAPI.uploadDocPolicy(companyId, fd);
+         console.log(`[FRONTEND LOG] ⏭️ Step 2 Skipped: No Google Sheet URL provided.`);
       }
-      toast.success('Policy added!');
-      setPolicyForm({ title: '', description: '', content: '' });
-      setPolicyFile(null);
-      const r = await companyAPI.getPolicies(companyId);
-      setPolicies(r.data);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to add policy');
-    } finally { setLoading(false); }
-  };
 
-  const deletePolicy = async (id) => {
-    try {
-      await companyAPI.deletePolicy(companyId, id);
-      setPolicies(p => p.filter(x => x.id !== id));
-      toast.success('Policy deleted');
-    } catch { toast.error('Failed'); }
-  };
+      // 3. Upload Policies (Text or Document)
+      if (formData.policiesText.trim()) {
+         console.log(`[FRONTEND LOG] 👉 Step 3a: Uploading Text Policy...`);
+         await axios.post(`http://localhost:8000/api/companies/${companyId}/policies/text`, {
+           title: "General HR Policies",
+           policy_type: "text",
+           content: formData.policiesText
+         });
+         console.log(`[FRONTEND LOG] ✅ Step 3a Success: Text Policies Attached.`);
+      }
 
-  const addDatabase = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await companyAPI.addDatabase(companyId, {
-        title: dbForm.title,
-        description: dbForm.description,
-        db_type: dbForm.db_type,
-        connection_config: { spreadsheet_id: dbForm.spreadsheet_id },
-      });
-      toast.success('Database connected & schema analyzed!');
-      const r = await companyAPI.getDatabases(companyId);
-      setDatabases(r.data);
-      setDbForm({ ...dbForm, title: '', description: '', spreadsheet_id: '' });
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed');
-    } finally { setLoading(false); }
-  };
+      if (formData.policyFile) {
+        console.log(`[FRONTEND LOG] 👉 Step 3b: Uploading Document Policy:`, formData.policyFile.name);
+        const policyFormData = new FormData();
+        policyFormData.append('title', formData.policyFile.name);
+        policyFormData.append('description', 'Uploaded during onboarding');
+        policyFormData.append('file', formData.policyFile);
 
-  const provisionEmployees = async (dbId) => {
-    setLoading(true);
-    try {
-      const res = await companyAPI.provisionEmployees(companyId, dbId);
-      setProvisionResult(res.data);
-      toast.success('Credentials sent to all employees!');
-      setStep(3);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Provisioning failed');
-    } finally { setLoading(false); }
-  };
+        await axios.post(`http://localhost:8000/api/companies/${companyId}/policies/document`, policyFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        console.log(`[FRONTEND LOG] ✅ Step 3b Success: Document Policy Uploaded.`);
+      }
 
-  const steps = [
-    { label: 'Register', icon: '🏢' },
-    { label: 'Policies', icon: '📜' },
-    { label: 'Database', icon: '🗄️' },
-    { label: 'Provision', icon: '🔑' },
-  ];
+      if (!formData.policiesText.trim() && !formData.policyFile) {
+         console.log(`[FRONTEND LOG] ⏭️ Step 3 Skipped: No Policies provided.`);
+      }
+
+      // 4. Provision Employees (generate passwords & send emails)
+      if (dbId) {
+         console.log(`[FRONTEND LOG] 👉 Step 4: Provisioning Employees into Database '${dbId}'...`);
+         const provRes = await axios.post(`http://localhost:8000/api/companies/${companyId}/databases/${dbId}/provision`);
+         console.log(`[FRONTEND LOG] ✅ Step 4 Success: Provisioning Complete. Stats:`, provRes.data);
+      }
+
+      console.log("[FRONTEND LOG] 🏁 Onboarding Process Finished smoothly!");
+      toast.success('Company registered and workspace ready!');
+      navigate('/login');
+    } catch (error) {
+      console.error("[FRONTEND ERROR] ❌ Onboarding Failed at some step:", error);
+      console.error("[FRONTEND ERROR] Response Error Data:", error.response?.data);
+      const msg = error.response?.data?.detail || 'Registration failed. Please check inputs and server logs.';
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen p-6" style={{ background: 'var(--bg-primary)' }}>
-      <div className="max-w-2xl mx-auto">
+    <div className="auth-layout fade-in">
+      <div className="auth-wrapper" style={{ maxWidth: '500px' }}>
+        <div className="auth-card">
+          <h1>Company Onboarding</h1>
+          <p className="subtitle">
+            {step === 1 ? 'Step 1: Basic Information' : 'Step 2: Connect Resources'}
+          </p>
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              {isPublic ? 'Company Registration' : 'Company Setup'}
-            </h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {companyId ? `ID: ${companyId}` : 'Register your company to get started'}
-            </p>
-          </div>
-          {user && (
-            <button onClick={() => navigate('/chat')} className="text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                    style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
-              ← Back to Chat
-            </button>
-          )}
-        </div>
-
-        {/* Step Indicators */}
-        <div className="flex gap-1 mb-8">
-          {steps.map((s, i) => (
-            <button key={i} onClick={() => (i === 0 || companyId) && setStep(i)}
-                    className="flex-1 py-2 rounded-xl text-[11px] font-medium transition-all cursor-pointer"
-                    style={{
-                      background: step === i ? 'var(--accent-subtle)' : 'var(--bg-card)',
-                      color: step === i ? 'var(--accent)' : 'var(--text-muted)',
-                      border: `1px solid ${step === i ? 'var(--accent)' : 'var(--border)'}`,
-                    }}>
-              {s.icon} {s.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Step Content */}
-        <div className="animate-fadeInUp">
-
-          {/* Step 0: Register */}
-          {step === 0 && (
-            <Card title="Register Company">
-              <form onSubmit={registerCompany} className="space-y-3">
-                <Row><Inp label="Company Name *" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} /></Row>
-                <Row><Inp label="Industry" value={regForm.industry} onChange={e => setRegForm({...regForm, industry: e.target.value})} /></Row>
-                <Row>
-                  <Inp label="HR Name *" value={regForm.hr_name} onChange={e => setRegForm({...regForm, hr_name: e.target.value})} />
-                  <Inp label="HR Email *" type="email" value={regForm.hr_email} onChange={e => setRegForm({...regForm, hr_email: e.target.value})} />
-                </Row>
-                <Row><Inp label="HR Email Password (SMTP)" type="password" value={regForm.hr_email_password} onChange={e => setRegForm({...regForm, hr_email_password: e.target.value})} /></Row>
-                <Row>
-                  <Inp label="Support Email" value={regForm.support_email} onChange={e => setRegForm({...regForm, support_email: e.target.value})} />
-                  <Inp label="Support Phone" value={regForm.support_phone} onChange={e => setRegForm({...regForm, support_phone: e.target.value})} />
-                </Row>
-                <Row><Inp label="Support WhatsApp" value={regForm.support_whatsapp} onChange={e => setRegForm({...regForm, support_whatsapp: e.target.value})} /></Row>
-                <Row><Inp label="Support Message" value={regForm.support_message} onChange={e => setRegForm({...regForm, support_message: e.target.value})} /></Row>
-                <Btn loading={loading}>Register Company</Btn>
-              </form>
-            </Card>
-          )}
-
-          {/* Step 1: Policies */}
-          {step === 1 && (
-            <>
-              <Card title="Add Policy">
-                <div className="flex gap-2 mb-4">
-                  {['text', 'document'].map(t => (
-                    <button key={t} onClick={() => setPolicyType(t)}
-                            className="flex-1 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all"
-                            style={{
-                              background: policyType === t ? 'var(--accent-subtle)' : 'var(--bg-input)',
-                              color: policyType === t ? 'var(--accent)' : 'var(--text-muted)',
-                              border: `1px solid ${policyType === t ? 'var(--accent)' : 'var(--border)'}`,
-                            }}>
-                      {t === 'text' ? '📝 Text Policy' : '📄 Document Upload'}
-                    </button>
-                  ))}
+          <form className="auth-form" onSubmit={step === 2 ? handleSubmit : (e) => { e.preventDefault(); handleNext(); }}>
+            {step === 1 ? (
+              <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div className="form-group">
+                  <label>Company Name</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiBriefcase style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                    <input
+                      type="text"
+                      className="input-field"
+                      style={{ paddingLeft: '2.5rem' }}
+                      placeholder="e.g. Acme Corp"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({...formData, companyName: e.target.value})}
+                      required
+                    />
+                  </div>
                 </div>
-                <form onSubmit={addPolicy} className="space-y-3">
-                  <Inp label="Title *" value={policyForm.title} onChange={e => setPolicyForm({...policyForm, title: e.target.value})} />
-                  <Inp label="Description" value={policyForm.description} onChange={e => setPolicyForm({...policyForm, description: e.target.value})} />
-                  {policyType === 'text' ? (
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Content *</label>
-                      <textarea rows={4} value={policyForm.content}
-                                onChange={e => setPolicyForm({...policyForm, content: e.target.value})}
-                                className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
-                                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }} />
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Upload PDF/DOC *</label>
-                      <input type="file" accept=".pdf,.doc,.docx,.txt"
-                             onChange={e => setPolicyFile(e.target.files[0])}
-                             className="text-xs" style={{ color: 'var(--text-secondary)' }} />
-                    </div>
-                  )}
-                  <Btn loading={loading}>Add Policy</Btn>
-                </form>
-              </Card>
 
-              {policies.length > 0 && (
-                <Card title="Existing Policies" className="mt-4">
-                  <div className="space-y-2">
-                    {policies.map(p => (
-                      <div key={p.id} className="flex items-center justify-between p-3 rounded-xl"
-                           style={{ background: 'var(--bg-input)', border: '1px solid var(--border-light)' }}>
-                        <div>
-                          <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{p.title}</p>
-                          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{p.policy_type} · {p.description || 'No description'}</p>
-                        </div>
-                        <button onClick={() => deletePolicy(p.id)}
-                                className="text-xs px-2 py-1 rounded-lg cursor-pointer"
-                                style={{ color: 'var(--danger)' }}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-            </>
-          )}
+                <div className="form-group">
+                  <label>Industry (Optional)</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. Technology"
+                    value={formData.industry}
+                    onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                  />
+                </div>
 
-          {/* Step 2: Database */}
-          {step === 2 && (
-            <>
-              <Card title="Connect Database">
-                <form onSubmit={addDatabase} className="space-y-3">
-                  <Inp label="Title *" value={dbForm.title} onChange={e => setDbForm({...dbForm, title: e.target.value})}
-                       placeholder="Employee Master Data" />
-                  <Inp label="Description" value={dbForm.description} onChange={e => setDbForm({...dbForm, description: e.target.value})} />
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Database Type</label>
-                    <select value={dbForm.db_type} onChange={e => setDbForm({...dbForm, db_type: e.target.value})}
-                            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none cursor-pointer"
-                            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
-                      <option value="google_sheets">Google Sheets</option>
-                      <option value="postgresql">PostgreSQL</option>
-                      <option value="mongodb">MongoDB</option>
-                      <option value="supabase">Supabase</option>
-                      <option value="excel">Excel</option>
-                    </select>
+                <div className="form-group">
+                  <label>HR Admin Name</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiUser style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                    <input
+                      type="text"
+                      className="input-field"
+                      style={{ paddingLeft: '2.5rem' }}
+                      placeholder="Jane Doe"
+                      value={formData.contactName}
+                      onChange={(e) => setFormData({...formData, contactName: e.target.value})}
+                      required
+                    />
                   </div>
-                  <Inp label="Google Sheet Link / ID *" value={dbForm.spreadsheet_id}
-                       onChange={e => setDbForm({...dbForm, spreadsheet_id: e.target.value})}
-                       placeholder="https://docs.google.com/spreadsheets/d/..." />
-                  <Btn loading={loading}>Connect & Analyze</Btn>
-                </form>
-              </Card>
+                </div>
 
-              {databases.length > 0 && (
-                <Card title="Connected Databases" className="mt-4">
-                  <div className="space-y-2">
-                    {databases.map(d => (
-                      <div key={d.id} className="p-3 rounded-xl"
-                           style={{ background: 'var(--bg-input)', border: '1px solid var(--border-light)' }}>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{d.title}</p>
-                            <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{d.db_type} · {d.is_active ? '✅ Active' : '❌ Inactive'}</p>
-                          </div>
-                          <button onClick={() => provisionEmployees(d.id)}
-                                  className="text-xs px-3 py-1.5 rounded-lg cursor-pointer font-medium transition-all"
-                                  style={{ background: 'var(--success-subtle)', color: 'var(--success)' }}>
-                            🔑 Provision
-                          </button>
-                        </div>
-                        {d.schema_map && (
-                          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border-light)' }}>
-                            <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                              Schema: PK={d.schema_map.primary_key} · Name={d.schema_map.employee_name} · Email={d.schema_map.email || 'N/A'}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                <div className="form-group">
+                  <label>HR Admin Email</label>
+                  <div style={{ position: 'relative' }}>
+                    <FiMail style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-secondary)' }} />
+                    <input
+                      type="email"
+                      className="input-field"
+                      style={{ paddingLeft: '2.5rem' }}
+                      placeholder="admin@company.com"
+                      value={formData.contactEmail}
+                      onChange={(e) => setFormData({...formData, contactEmail: e.target.value})}
+                      required
+                    />
                   </div>
-                </Card>
-              )}
-            </>
-          )}
+                </div>
 
-          {/* Step 3: Provision */}
-          {step === 3 && (
-            <Card title="Employee Provisioning">
-              {provisionResult ? (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl" style={{ background: 'var(--success-subtle)', border: '1px solid var(--success)' }}>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--success)' }}>✅ Provisioning Complete!</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                      {provisionResult.total_employees || provisionResult.message || 'Credentials sent successfully.'}
-                    </p>
-                  </div>
-                  <button onClick={() => navigate('/chat')}
-                          className="w-full py-3 rounded-xl text-sm font-semibold cursor-pointer transition-all"
-                          style={{ background: 'var(--accent)', color: '#fff' }}>
-                    Go to Chat Portal →
+                <div className="form-actions">
+                  <button type="button" onClick={handleNext} className="btn btn-primary btn-full">
+                    Next Step
                   </button>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Connect a database first, then click "🔑 Provision" to send login credentials to all employees.
+              </div>
+            ) : (
+              <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div className="form-group">
+                  <label>Employee Database (Google Sheets URL)</label>
+                  <input
+                    type="url"
+                    className="input-field"
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    value={formData.dbUrl}
+                    onChange={(e) => setFormData({...formData, dbUrl: e.target.value})}
+                    required
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+                    Agent will automatically analyze columns and create schemas.
                   </p>
                 </div>
-              )}
-            </Card>
-          )}
+
+                <div className="form-group">
+                  <label>Company Policies (Text or PDF/TXT Upload)</label>
+                  <textarea
+                    className="input-field"
+                    rows="3"
+                    placeholder="Paste basic policies here..."
+                    value={formData.policiesText}
+                    onChange={(e) => setFormData({...formData, policiesText: e.target.value})}
+                    style={{ marginBottom: '0.75rem' }}
+                  ></textarea>
+                  
+                  <div 
+                    className="file-upload-zone" 
+                    style={{
+                      border: '2px dashed #e2e8f0',
+                      borderRadius: '12px',
+                      padding: '1.5rem 1rem',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      background: formData.policyFile ? '#f0f9ff' : '#f8fafc',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }} 
+                    onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--brand-primary)'}
+                    onMouseOut={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
+                    onClick={() => document.getElementById('policy-file-input').click()}
+                  >
+                    <input 
+                      id="policy-file-input"
+                      type="file" 
+                      accept=".pdf,.txt,.md"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        if (e.target.files[0]) {
+                          setFormData({...formData, policyFile: e.target.files[0]});
+                        }
+                      }}
+                    />
+                    <div style={{ 
+                      width: '40px', 
+                      height: '40px', 
+                      borderRadius: '50%', 
+                      background: formData.policyFile ? '#0ea5e9' : '#e2e8f0', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      color: 'white',
+                      marginBottom: '0.25rem'
+                    }}>
+                      <FiUploadCloud size={20} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
+                        {formData.policyFile ? 'File Selected' : 'Upload Policy File'}
+                      </p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                        {formData.policyFile ? formData.policyFile.name : 'Drag & drop or click to browse (PDF, TXT)'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                  <button type="button" onClick={() => setStep(1)} className="btn btn-secondary" style={{ flex: 1 }}>
+                    Back
+                  </button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={isLoading}>
+                    {isLoading ? 'Setting up Workspace...' : 'Register Company'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+          
+          <div className="auth-footer text-center">
+            <p>Already have an account? <Link to="/login">Sign in</Link></p>
+          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-/* ── Reusable Components ─────────────────────── */
-
-function Card({ title, children, className = '' }) {
-  return (
-    <div className={`p-5 rounded-2xl ${className}`}
-         style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
-      {title && <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>{title}</h2>}
-      {children}
-    </div>
-  );
-}
-
-function Inp({ label, ...props }) {
-  return (
-    <div className="flex-1 min-w-0">
-      <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>{label}</label>
-      <input className="w-full px-3 py-2 rounded-xl text-sm outline-none transition-all"
-             style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-             onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-             onBlur={e => e.target.style.borderColor = 'var(--border)'}
-             {...props} />
-    </div>
-  );
-}
-
-function Row({ children }) {
-  return <div className="flex gap-3">{children}</div>;
-}
-
-function Btn({ children, loading }) {
-  return (
-    <button type="submit" disabled={loading}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--accent), #8b5cf6)', color: '#fff', boxShadow: 'var(--shadow-glow)' }}>
-      {loading ? (
-        <span className="flex items-center justify-center gap-2">
-          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          Processing…
-        </span>
-      ) : children}
-    </button>
   );
 }
