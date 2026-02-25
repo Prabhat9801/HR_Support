@@ -23,8 +23,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Auth Pages Layout */
@@ -288,6 +292,8 @@
   padding: 1.5rem;
   background: var(--bg-primary);
   border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
 }
 
 .chat-input-wrapper {
@@ -299,6 +305,7 @@
   padding: 0.5rem;
   border: 1px solid transparent;
   transition: border-color 0.2s;
+  width: 75%;
 }
 
 .chat-input-wrapper:focus-within {
@@ -328,7 +335,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s, transform 0.1s;
+  transition:
+    background-color 0.2s,
+    transform 0.1s;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -338,4 +347,3 @@
 .send-btn:active:not(:disabled) {
   transform: scale(0.95);
 }
-

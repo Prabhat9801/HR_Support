@@ -177,36 +177,79 @@ export default function SettingsPanel({ userInfo }) {
   };
 
   const dropdownOptions = {
-    'Employee Status': ['Active', 'Pending', 'Inactive', 'Closed'],
-    'Employment Type': ['Full-time', 'Part-time', 'Contract', 'Intern'],
-    'Role': ['Employee', 'Manager', 'HR', 'CEO', 'Admin'],
-    'Department': ['IT', 'HR', 'Finance', 'Operations', 'Sales', 'Marketing', 'Customer Support'],
-    'Performance Rating (1-5)': ['1', '2', '3', '4', '5'],
-    'User Role': ['EMPLOYEE', 'MANAGER', 'HR', 'CEO', 'ADMIN']
+    'employee status': ['Active', 'Pending', 'Inactive', 'Closed'],
+    'employment type': ['Full-time', 'Part-time', 'Contract', 'Intern'],
+    'role': ['Employee', 'Manager', 'HR', 'CEO', 'Admin'],
+    'department': ['IT', 'HR', 'Finance', 'Operations', 'Sales', 'Marketing', 'Customer Support', 'Management'],
+    'performance rating (1-5)': ['1', '2', '3', '4', '5'],
+    'user role': ['EMPLOYEE', 'MANAGER', 'HR', 'CEO', 'ADMIN']
   };
 
   const renderField = (key, value, setter, disabled = false) => {
-    const options = dropdownOptions[key];
+    // 1. Dropdowns
+    const optionsKey = (key || '').toLowerCase().trim();
+    const options = dropdownOptions[optionsKey];
     if (options) {
       return (
         <select 
           value={value || ''} 
           onChange={e => setter(e.target.value)}
           className="input-field"
-          style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.9rem', width: '100%' }}
+          style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.9rem', width: '100%', height: '42px', outline: 'none' }}
         >
           <option value="">Select {key}</option>
           {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       );
     }
+
+    // 2. Dates
+    const isDateField = optionsKey.includes('date') || optionsKey === 'date of joining' || optionsKey === 'dob';
+    if (isDateField) {
+      // Parse Sheet DD/MM/YYYY into YYYY-MM-DD for standard input formatting
+      let displayDate = value || '';
+      if (displayDate && typeof displayDate === 'string') {
+        const parts = displayDate.split(/[\/\-\.]/);
+        if (parts.length === 3 && parts[2].length === 4) {
+           displayDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else if (parts.length === 3 && parts[0].length === 4) {
+           displayDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+      }
+
+      return (
+        <input 
+          type="date" 
+          value={displayDate} 
+          onChange={e => {
+            const newDate = e.target.value;
+            if (newDate) {
+              const parts = newDate.split('-');
+              if (parts.length === 3) {
+                // Save formatted backwards DD/MM/YYYY for Sheet compatability
+                setter(`${parts[2]}/${parts[1]}/${parts[0]}`);
+              } else {
+                setter(newDate);
+              }
+            } else {
+              setter('');
+            }
+          }}
+          className="input-field"
+          style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.9rem', width: '100%', height: '42px', padding: '0 0.8rem', outline: 'none' }}
+          disabled={disabled}
+        />
+      );
+    }
+
+    // 3. Default text input
     return (
       <input 
         type="text" 
         value={value || ''} 
         onChange={e => setter(e.target.value)}
         className="input-field"
-        style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.9rem' }}
+        style={{ background: 'white', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.9rem', width: '100%', height: '42px', padding: '0 0.8rem', outline: 'none' }}
         disabled={disabled}
       />
     );

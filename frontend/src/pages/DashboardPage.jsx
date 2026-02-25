@@ -404,8 +404,9 @@ export default function DashboardPage() {
                 <div className="message-avatar" style={{ background: 'var(--brand-primary)', color: 'white' }}>
                   <FiCommand size={14} />
                 </div>
-                <div className="message-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="dot-typing"></div>
+                <div className="message-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1rem' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-tertiary)', fontStyle: 'italic', fontWeight: 500 }}>Thinking</span>
+                  <div className="dot-typing" style={{ margin: '0 20px 0 4px' }}></div>
                 </div>
               </div>
             )}
