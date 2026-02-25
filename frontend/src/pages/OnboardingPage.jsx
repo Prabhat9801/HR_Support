@@ -57,7 +57,7 @@ export default function OnboardingPage() {
           hr_name: formData.contactName,
           hr_email: formData.contactEmail
         };
-        const compRes = await axios.post('http://localhost:8000/api/companies/register', companyPayload);
+        const compRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/register`, companyPayload);
         const newCompanyId = compRes.data.id;
 
         setGlobalCompanyId(newCompanyId);
@@ -107,7 +107,7 @@ export default function OnboardingPage() {
       let dbId = null;
       if (formData.dbUrl) {
         console.log(`[FRONTEND LOG] 👉 Step 2: Attaching Google Sheet DB:`, formData.dbUrl);
-        const dbRes = await axios.post(`http://localhost:8000/api/companies/${globalCompanyId}/databases`, {
+        const dbRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${globalCompanyId}/databases`, {
           title: "Primary Employee DB",
           db_type: "google_sheets",
           connection_config: { spreadsheet_id: formData.dbUrl }
@@ -119,7 +119,7 @@ export default function OnboardingPage() {
       // 3. Upload Policies (Text or Document)
       if (formData.policiesText.trim()) {
         console.log(`[FRONTEND LOG] 👉 Step 3a: Uploading Text Policy...`);
-        await axios.post(`http://localhost:8000/api/companies/${globalCompanyId}/policies/text`, {
+        await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${globalCompanyId}/policies/text`, {
           title: "General HR Policies",
           policy_type: "text",
           content: formData.policiesText
@@ -134,7 +134,7 @@ export default function OnboardingPage() {
         policyFormData.append('description', 'Uploaded during onboarding');
         policyFormData.append('file', formData.policyFile);
 
-        await axios.post(`http://localhost:8000/api/companies/${globalCompanyId}/policies/document`, policyFormData, {
+        await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${globalCompanyId}/policies/document`, policyFormData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         console.log(`[FRONTEND LOG] ✅ Step 3b Success: Document Policy Uploaded.`);
@@ -144,7 +144,7 @@ export default function OnboardingPage() {
       if (dbId) {
         console.log(`[FRONTEND LOG] 👉 Step 4: Provisioning Employees into Database '${dbId}'...`);
         // Notice it reads the new tokens now internally
-        const provRes = await axios.post(`http://localhost:8000/api/companies/${globalCompanyId}/databases/${dbId}/provision`);
+        const provRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${globalCompanyId}/databases/${dbId}/provision`);
         console.log(`[FRONTEND LOG] ✅ Step 4 Success: Provisioning Complete. Stats:`, provRes.data);
       }
 

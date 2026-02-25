@@ -44,7 +44,7 @@ export default function OAuthCallbackPage() {
                 toast.loading("Connecting your Google Workspace...", { id: 'oauth' });
 
                 // Exchange code for tokens on backend
-                await axios.post('http://localhost:8000/api/companies/oauth-exchange', {
+                await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/oauth-exchange`, {
                     code: code,
                     company_id: companyId
                 });

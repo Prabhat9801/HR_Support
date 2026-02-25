@@ -33,10 +33,10 @@ export default function SettingsPanel({ userInfo }) {
   const fetchData = async () => {
     try {
       const [polRes, dbRes] = await Promise.all([
-        axios.get(`http://localhost:8000/api/companies/${companyId}/policies`, {
+        axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/policies`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        axios.get(`http://localhost:8000/api/companies/${companyId}/databases`, {
+        axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/databases`, {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -54,7 +54,7 @@ export default function SettingsPanel({ userInfo }) {
   const fetchEmployeeData = async () => {
     setTableLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8000/api/companies/${companyId}/employee-data`, {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/employee-data`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setEmployees(res.data);
@@ -82,7 +82,7 @@ export default function SettingsPanel({ userInfo }) {
 
     try {
       toast.loading("Uploading document...", { id: "docPol" });
-      await axios.post(`http://localhost:8000/api/companies/${companyId}/policies/document`, formData, {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/policies/document`, formData, {
         headers: { 
             Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
@@ -101,7 +101,7 @@ export default function SettingsPanel({ userInfo }) {
     if(!window.confirm("Are you sure you want to delete this policy?")) return;
     try {
         toast.loading("Deleting...", { id: "delPol" });
-        await axios.delete(`http://localhost:8000/api/companies/${companyId}/policies/${policyId}`, {
+        await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/policies/${policyId}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
         toast.success("Policy deleted", { id: "delPol" });
@@ -124,7 +124,7 @@ export default function SettingsPanel({ userInfo }) {
 
     try {
       toast.loading("Updating records...", { id: 'editEmp' });
-      await axios.post(`http://localhost:8000/api/companies/${companyId}/employee-data/update`, {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/employee-data/update`, {
           employee_id: empId,
           updates: editFormData
       }, {
@@ -142,7 +142,7 @@ export default function SettingsPanel({ userInfo }) {
     e.preventDefault();
     try {
       toast.loading("Adding new employee...", { id: 'addEmp' });
-      await axios.post(`http://localhost:8000/api/companies/${companyId}/employee-data/create`, addFormData, {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${companyId}/employee-data/create`, addFormData, {
           headers: { Authorization: `Bearer ${token}` }
       });
       toast.success("New employee added to Google Sheet!", { id: 'addEmp' });

@@ -28,7 +28,7 @@ export default function LoginPage() {
 
     try {
       console.log(`[FRONTEND LOG] 🌐 Sending POST to http://localhost:8000/api/auth/login`);
-      const response = await axios.post('http://localhost:8000/api/auth/login', payload);
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/auth/login`, payload);
 
       console.log("[FRONTEND LOG] ✅ Backend Response received:", response.status, response.data);
 

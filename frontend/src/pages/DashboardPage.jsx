@@ -35,7 +35,7 @@ export default function DashboardPage() {
 
   const fetchNotifications = async (token) => {
     try {
-      const res = await axios.get('http://localhost:8000/api/notifications/', {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/notifications/`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setNotifications(res.data);
@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const markAsRead = async (id) => {
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.post(`http://localhost:8000/api/notifications/${id}/read`, {}, {
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/notifications/${id}/read`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchNotifications(token);
@@ -58,7 +58,7 @@ export default function DashboardPage() {
 
   const fetchMyRequests = async (token) => {
     try {
-      const res = await axios.get('http://localhost:8000/api/approvals/my-requests', {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/approvals/my-requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMyRequests(res.data);
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     ]);
 
     // Fetch support card info
-    axios.get(`http://localhost:8000/api/companies/${parsed.company_id}/support`, {
+    axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/companies/${parsed.company_id}/support`, {
       headers: { Authorization: `Bearer ${parsed.access_token}` }
     }).then(res => setSupportInfo(res.data)).catch(err => console.error(err));
 
@@ -139,7 +139,7 @@ export default function DashboardPage() {
     try {
       const token = localStorage.getItem('auth_token');
       console.log(`[FRONTEND LOG] 👉 Sending Chat Message to Agent: "${inputText}"`);
-      const response = await axios.post('http://localhost:8000/api/chat/send', 
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/chat/send`, 
         { message: inputText },
         { headers: { Authorization: `Bearer ${token}` } }
       );

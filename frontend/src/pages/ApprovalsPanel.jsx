@@ -11,7 +11,7 @@ export default function ApprovalsPanel({ userInfo }) {
   const fetchApprovals = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const res = await axios.get('http://localhost:8000/api/approvals/pending', {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/approvals/pending`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPendingRequests(res.data);
@@ -34,7 +34,7 @@ export default function ApprovalsPanel({ userInfo }) {
 
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.post(`http://localhost:8000/api/approvals/${id}/decide`,
+      await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/approvals/${id}/decide`,
         { status: status, comments: `Automatically ${status} by ${userInfo.employee_name}` },
         { headers: { Authorization: `Bearer ${token}` } }
       );
