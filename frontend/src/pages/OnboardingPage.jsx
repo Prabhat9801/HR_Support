@@ -82,7 +82,7 @@ export default function OnboardingPage() {
     if (!globalCompanyId) return;
     const clientId = "561628688869-uhibvk67hslomtphrq8hp4ha1ktviefl.apps.googleusercontent.com";
     const scopes = "https://mail.google.com/ https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
-    const redirect = "http://localhost:5173/oauth/callback"; // Make sure to match exact URL set in Google Console
+    const redirect = `${window.location.origin}/oauth/callback`; // Auto-detect current host (localhost or Production)
 
     // Temporarily save exact current form fields so we don't lose dbUrl/texts typed
     localStorage.setItem('botivate_onboarding_form', JSON.stringify(formData));
